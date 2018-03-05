@@ -76,7 +76,7 @@ namespace {
         int jnm_cnt = 0;
         int ref_cnt = 0;
         int act_cnt = 0;
-        for(int j = 0; j < 4; j++) {
+        for(int j = 0; j < 5; j++) {
           if (jnm_cnt >= size) break;
           for(int i = 0; i < 8; i++) {
             if (jnm_cnt < size) fprintf(stderr, "%14.14s ", joint_list[jnm_cnt++].c_str());
@@ -99,7 +99,7 @@ namespace {
         int ref_cnt = 0;
         int act_cnt = 0;
         int snt_cnt = 0;
-        for(int j = 0; j < 4; j++) {
+        for(int j = 0; j < 5; j++) {
           if (snm_cnt >= size) break;
           for(int i = 0; i < 8; i++) {
             if (snm_cnt < size) fprintf(stderr, "%14.14s ", stroke_list[snm_cnt++].c_str());

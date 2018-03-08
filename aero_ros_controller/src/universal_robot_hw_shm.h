@@ -59,7 +59,7 @@
 // shared memory
 #include <aero_startup/controller_shm.h>
 
-namespace universal_realtime_controller
+namespace universal_controller_shm
 {
 
 class UniversalRobotHWShm : public hardware_interface::RobotHW
@@ -139,6 +139,7 @@ protected:
   //hardware_interface::VelocityJointInterface vj_interface_;
   //hardware_interface::EffortJointInterface   ej_interface_;
 
+  joint_limits_interface::PositionJointSaturationInterface pj_sat_interface_;
 #if 0
   joint_limits_interface::PositionJointSaturationInterface pj_sat_interface_;
   joint_limits_interface::PositionJointSoftLimitsInterface pj_limits_interface_;

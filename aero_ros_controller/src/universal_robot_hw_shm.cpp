@@ -44,7 +44,7 @@
 //   types
 //   methods
 //   limits(from URDF)
-namespace universal_realtime_controller
+namespace universal_controller_shm
 {
 
 bool UniversalRobotHWShm::init(ros::NodeHandle& root_nh, ros::NodeHandle &robot_hw_nh)// add joint list
@@ -83,8 +83,18 @@ bool UniversalRobotHWShm::init(ros::NodeHandle& root_nh, ros::NodeHandle &robot_
     ROS_ERROR("Parameter %s/aero_joint_names is empty", robot_hw_nh.getNamespace().c_str());
     return false;
   }
-  // TODO
-  // joint existance check (from URDF)
+
+  std::string model_str;
+  if (!robot_hw_nh.getParam("robot_description", model_str)) {
+    ROS_ERROR("Failed to get model from robot_description");
+    return false;
+  }
+  urdf::Model model;
+  if (!model.initString(model_str)) {
+    ROS_ERROR("Failed to parse robot_description");
+    return false;
+  }
+
   n_dof_ = names.size();
 
   joint_names_.resize(n_dof_);
@@ -101,15 +111,20 @@ bool UniversalRobotHWShm::init(ros::NodeHandle& root_nh, ros::NodeHandle &robot_
   joint_position_command_.resize(n_dof_);
   joint_velocity_command_.resize(n_dof_);
 
-  ROS_INFO("read %d joints", n_dof_);
+  ROS_DEBUG("read %d joints", n_dof_);
   for (int i = 0; i < n_dof_; i++) {
     joint_names_[i] = names[i];
-    ROS_INFO("  %d: %s", i, joint_names_[i].c_str());
+    ROS_DEBUG("  %d: %s", i, joint_names_[i].c_str());
+  }
+  for(unsigned int i = 0; i < n_dof_; i++) {
+    if(!model.getJoint(joint_names_[i])) {
+      ROS_ERROR("Joint %s does not exist in urdf model", joint_names_[i].c_str());
+      return false;
+    }
   }
 
   // Initialize values
-  for(unsigned int j = 0; j < n_dof_; j++)
-  {
+  for(unsigned int j = 0; j < n_dof_; j++) {
     // Add data from transmission
     joint_position_[j] = shm_->act_angle[j];
     joint_position_command_[j] = shm_->act_angle[j];
@@ -118,16 +133,27 @@ bool UniversalRobotHWShm::init(ros::NodeHandle& root_nh, ros::NodeHandle &robot_
     joint_velocity_command_[j] = 0.0;
     joint_effort_[j]   = 0.0;  // N/m for continuous joints
     joint_effort_command_[j]   = 0.0;
-
+    std::string jointname = joint_names_[j];
     // Create joint state interface for all joints
     js_interface_.registerHandle(hardware_interface::JointStateHandle(
-        joint_names_[j], &joint_position_[j], &joint_velocity_[j], &joint_effort_[j]));
+        jointname, &joint_position_[j], &joint_velocity_[j], &joint_effort_[j]));
 
     joint_control_methods_[j] = POSITION;
     hardware_interface::JointHandle joint_handle =
-      hardware_interface::JointHandle(js_interface_.getHandle(joint_names_[j]),
+      hardware_interface::JointHandle(js_interface_.getHandle(jointname),
                                       &joint_position_command_[j]);
     pj_interface_.registerHandle(joint_handle);
+
+    joint_limits_interface::JointLimits limits;
+    const bool urdf_limits_ok = joint_limits_interface::getJointLimits(model.getJoint(jointname), limits);
+    if (!urdf_limits_ok) {
+      ROS_WARN("urdf limits of joint %s is not defined", jointname.c_str());
+    }
+    // Register handle in joint limits interface
+    joint_limits_interface::PositionJointSaturationHandle
+      limits_handle(joint_handle, // We read the state and read/write the command
+                    limits);       // Limits spec
+    pj_sat_interface_.registerHandle(limits_handle);
   }
 
   // Register interfaces
@@ -159,6 +185,7 @@ void UniversalRobotHWShm::read(const ros::Time& time, const ros::Duration& perio
 
 void UniversalRobotHWShm::write(const ros::Time& time, const ros::Duration& period)
 {
+  pj_sat_interface_.enforceLimits(period);
 #if 0
   ej_sat_interface_.enforceLimits(period);
   ej_limits_interface_.enforceLimits(period);

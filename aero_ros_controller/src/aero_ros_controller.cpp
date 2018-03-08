@@ -41,11 +41,11 @@
 #include <controller_manager/controller_manager.h>
 #include "universal_robot_hw_shm.h"
 
-using namespace universal_realtime_controller;
+using namespace universal_controller_shm;
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "universal_realtime_controller");
+  ros::init(argc, argv, "aero_ros_controller");
 
   ros::AsyncSpinner spinner(1);
   spinner.start();
@@ -59,16 +59,25 @@ int main(int argc, char** argv)
     exit(1);
   }
 
+  double rate = 10;
+  if (nh.hasParam("controller_rate")) {
+    nh.getParam("controller_rate", rate);
+  }
   controller_manager::ControllerManager cm(&hw, robot_nh);
 
+  ROS_INFO("ControllerManager start with %f Hz", rate);
   // TODO: realtime loop
-  ros::Duration period(0.1);
+
+  ros::Rate r(rate);
+  ros::Time tm = ros::Time::now();
   while (ros::ok()) {
-    //ROS_INFO("loop");
-    hw.read(ros::Time::now(), period);
-    cm.update(ros::Time::now(), period);
-    hw.write(ros::Time::now(), period);
-    period.sleep();
+    r.sleep();
+    ros::Time now = ros::Time::now();
+    ros::Duration period = now - tm;
+    hw.read  (now, period);
+    cm.update(now, period);
+    hw.write (now, period);
+    tm = now;
   }
 
   return 0;

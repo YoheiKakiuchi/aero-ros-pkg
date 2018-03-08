@@ -42,12 +42,29 @@ include_directories(include
   ${Boost_INCLUDE_DIR}
 )
 
+# add c++ dependencies :
+include(CheckCXXCompilerFlag)
+CHECK_CXX_COMPILER_FLAG("-std=c+11" COMPILER_SUPPORTS_CXX11)
+CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
+if(COMPILER_SUPPORTS_CXX11)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+  add_definitions(-DCXX11_SUPPORTED)
+elseif(COMPILER_SUPPORTS_CXX0X)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+  add_definitions(-DCXX11_SUPPORTED)
+else()
+  message(FATAL "c++11 required but not supported")
+endif()
+
 ## Libraries
 add_library(universal_robot_hw_shm src/universal_robot_hw_shm.cpp )
 target_link_libraries(universal_robot_hw_shm ${catkin_LIBRARIES})
 
 add_executable(${PROJECT_NAME} src/aero_ros_controller.cpp)
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} universal_robot_hw_shm)
+
+add_executable(aero_ros_base_controller src/aero_ros_base_controller.cpp)
+target_link_libraries(aero_ros_base_controller ${catkin_LIBRARIES})
 
 ## Install
 install(TARGETS ${PROJECT_NAME} universal_robot_hw_shm

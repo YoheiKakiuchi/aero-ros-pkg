@@ -1,6 +1,10 @@
 <launch>
   <!--include file="" >
-  </include-->
+      </include-->
+  <node pkg="aero_startup" type="aero_controller_wrapper"
+        name="aero_raw_controller"
+        output="screen" >
+  </node>
   <node pkg="aero_ros_controller" type="aero_ros_controller"
         name="ros_joint_controller_mamager"
         output="screen" >
@@ -19,6 +23,7 @@
         - r_wrist_y_joint
         - r_wrist_p_joint
         - r_wrist_r_joint
+#        - r_hand_y_joint
     larm_controller:
       type: position_controllers/JointTrajectoryController
       joints:
@@ -29,6 +34,7 @@
         - l_wrist_y_joint
         - l_wrist_p_joint
         - l_wrist_r_joint
+#        - l_hand_y_joint
     head_controller:
       type: position_controllers/JointTrajectoryController
       joints:
@@ -59,6 +65,7 @@
     - l_wrist_y_joint
     - l_wrist_p_joint
     - l_wrist_r_joint
+#    - l_hand_y_joint
     - l_indexbase_joint
     - l_indexmid_joint
     - l_indexend_joint
@@ -73,18 +80,25 @@
     - r_wrist_y_joint
     - r_wrist_p_joint
     - r_wrist_r_joint
+#    - r_hand_y_joint
     - r_indexbase_joint
     - r_indexmid_joint
     - r_indexend_joint
     - r_thumb_joint
-    - hip_joint
+    - knee_joint_mimic
     - knee_joint
     - ankle_joint
   </rosparam>
-  <param name="robot_description"
+  <pparam name="robot_description"
          command="$(find xacro)/xacro --inorder '$(find aero_description)/robots/aero.urdf.xacro'" />
+  <pparam name="robot_description_semantic"
+         textfile="$(find aero_moveit_config_new)/config/AeroUpperRobot.srdf" />
+  <include file="$(find aero_moveit_config_new)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="true"/>
+  </include>
+
   <node name="aero_state_publisher"
-        pkg="robot_state_publisher" type="robot_state_publisher" />
+       pkg="robot_state_publisher" type="robot_state_publisher" />
 
   <node name="cm_spawner" pkg="controller_manager"
         type="spawner" args="joint_state_controller larm_controller rarm_controller head_controller waist_controller lift_controller" />

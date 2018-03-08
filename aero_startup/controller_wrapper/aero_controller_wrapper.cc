@@ -30,6 +30,8 @@
 #include "aero_hardware_interface/Angle2Stroke.hh"
 #include "aero_hardware_interface/UnusedAngle2Stroke.hh"
 
+#include "aero_move_base/AeroBaseConfig.hh"
+
 #include <aero_startup/controller_shm.h>
 
 using namespace aero;
@@ -56,21 +58,24 @@ static void initialize_shm()
 }
 
 #define DISPLAY_THREAD_PERIOD  250000 //250ms
-#define MAIN_THREAD_PERIOD     100000 //100ms (10Hz)
+#define MAIN_THREAD_PERIOD      50000 //50ms (20Hz)
+#define OVERWRAP_SCALE         2.8 // 1.0 := no overwrap
+#define NSEC_PER_SEC    1000000000L
 
 static sig_atomic_t  stop_flag = 0;
 static std::vector< std::string> joint_list;
 static std::vector< std::string> stroke_list;
-
+static std::vector< std::string> wheel_names;
 namespace {
   // スレッド間共有コンテキスト
   volatile unsigned long long frame_counter = 0;
   double jitter;
   double max_interval;
+  double ave_interval;
   // 描画 スレッド
   void* display_thread_fun(void *arg) {
     while(!stop_flag) {
-      fprintf(stderr, "jitter: %4.2f [us] / max_interval: %6.4f [ms]\n", jitter, max_interval/1000.0);
+      fprintf(stderr, "max_interval: %6.4f [ms] / average: %6.4f [ms]\n", max_interval/1000.0, ave_interval/1000.0);
       {
         int size = joint_list.size();
         int jnm_cnt = 0;
@@ -119,7 +124,17 @@ namespace {
           fprintf(stderr, " act_stroke\n\n");
         }
       }
-
+      fprintf(stderr, "\n");
+      {
+        int size = wheel_names.size();
+        for(int i = 0; i < size; i++) {
+          fprintf(stderr, "%14.14s ", wheel_names[i].c_str());
+        }
+        fprintf(stderr, "\n");
+        for(int i = 0; i < size; i++) {
+          fprintf(stderr, "%14d ", shm->wheel_velocity[i]);
+        }
+      }
       struct timespec tm;
       tm.tv_sec = 0;
       tm.tv_nsec = DISPLAY_THREAD_PERIOD*1000;
@@ -187,8 +202,12 @@ int main(int argc, char** argv)
     stroke_list.push_back(name);
   }
 
+  aero::navigation::AeroBaseConfig config;
+  config.get_wheel_names(wheel_names);
+
   std::cerr << "num of joints: " << joint_list.size() << std::endl;
   std::cerr << "num of strokes: " << stroke_list.size() << std::endl;
+  std::cerr << "num of wheels: "  << wheel_names.size() << std::endl;
 #if 0
   for(int i = 0; i < joint_list.size(); i++) {
     std::cerr << joint_list[i] << std::endl;
@@ -198,6 +217,7 @@ int main(int argc, char** argv)
   }
   exit(1);
 #endif
+
 #if 0
   for(int i = 0; i < joint_list.size(); i++) {
     int nmlen = joint_list[i].size() + 1;
@@ -226,11 +246,22 @@ int main(int argc, char** argv)
     }
   }
 #endif
+
   // main loop 開始
   std::vector<double > prev_ref_positions(number_of_angle_joints);
   bool initialized_flag = false;
+  bool wheel_off = false;
+  max_interval = 0.0;
+  ave_interval = 0.0;
+  int cntr = 0;
+  static timespec m_t;
+  clock_gettime( CLOCK_MONOTONIC, &m_t );
   while(!stop_flag) {
     ////// read strokes and convert strokes to positions
+    //
+    controller_upper.update_position();
+    controller_lower.update_position();
+
     // get upper actual positions
     std::vector<int16_t> upper_act_strokes =
       controller_upper.get_actual_stroke_vector();
@@ -275,6 +306,16 @@ int main(int argc, char** argv)
       for(int i = 0; i < number_of_angle_joints; i++) {
         prev_ref_positions[i] = shm->ref_angle[i] = shm->act_angle[i];
       }
+
+      std::vector<int16_t> wheel_vector(controller_lower.get_reference_wheel_vector().size());
+      for(int i = 0; i < wheel_vector.size(); i++) {
+            wheel_vector[i] = 0;
+            shm->wheel_velocity[i] = 0;
+      }
+      uint16_t time_csec = static_cast<uint16_t>((OVERWRAP_SCALE*MAIN_THREAD_PERIOD)/(1000*10));
+      controller_lower.set_wheel_velocity(wheel_vector, time_csec);
+      controller_lower.wheel_only_off();
+      wheel_off = true;
       initialized_flag = true;
     } else {
       //std::fill(ref_positions.begin(), ref_positions.end(), 0.0);
@@ -304,7 +345,7 @@ int main(int argc, char** argv)
       std::vector<int16_t> lower_strokes(
         snt_strokes.begin() + AERO_DOF_UPPER, snt_strokes.end());
 
-      uint16_t time_csec = static_cast<uint16_t>(1.0 * 14.0); // 100ms
+      uint16_t time_csec = static_cast<uint16_t>((OVERWRAP_SCALE*MAIN_THREAD_PERIOD)/(1000*10));
       controller_upper.set_position(upper_strokes, time_csec);
       controller_lower.set_position(lower_strokes, time_csec);
 
@@ -316,10 +357,82 @@ int main(int argc, char** argv)
       shm->frame++;
     }
 
-    struct timespec tm; ////
-    tm.tv_sec  = 0;
-    tm.tv_nsec = MAIN_THREAD_PERIOD*1000;
-    nanosleep(&tm, NULL);
+    //// Base
+    {
+      static int zero_count = 1;
+      bool all_zero = true;
+      for (int i = 0; i < wheel_names.size(); i++) {
+        if (shm->wheel_velocity[i] != 0.0) {
+          all_zero = false;
+          break;
+        }
+      }
+      if (all_zero) {
+        // stop controller
+        zero_count++;
+        if (zero_count > 4 && !wheel_off) {
+          std::vector<int16_t> wheel_vector(controller_lower.get_reference_wheel_vector().size());
+          for(int i = 0; i < wheel_vector.size(); i++) {
+            wheel_vector[i] = 0;
+          }
+          uint16_t time_csec = static_cast<uint16_t>((OVERWRAP_SCALE*MAIN_THREAD_PERIOD)/(1000*10));
+          controller_lower.set_wheel_velocity(wheel_vector, time_csec);
+          controller_lower.wheel_only_off();
+          wheel_off = true;
+        }
+      } else {
+        if(wheel_off) {
+          controller_lower.wheel_on();
+          wheel_off = false;
+        }
+        zero_count = 0;
+        std::vector<int16_t> wheel_vector;
+        std::vector<int16_t>& ref_vector = controller_lower.get_reference_wheel_vector();
+        wheel_vector.assign(ref_vector.begin(), ref_vector.end());
+
+        std::vector<int32_t> joint_to_wheel_indices(AERO_DOF_WHEEL);
+        for (size_t i = 0; i < wheel_names.size(); ++i) {
+          joint_to_wheel_indices[i] = controller_lower.get_wheel_id(wheel_names[i]);
+        }
+        for(int i = 0; i < wheel_vector.size(); i++) {
+          if (joint_to_wheel_indices[i] >= 0) {
+            wheel_vector[static_cast<size_t>(joint_to_wheel_indices[i])]
+              = shm->wheel_velocity[i];
+          }
+        }
+        uint16_t time_csec = static_cast<uint16_t>((OVERWRAP_SCALE*MAIN_THREAD_PERIOD)/(1000*10));
+        controller_lower.set_wheel_velocity(wheel_vector, time_csec);
+      }
+    }
+
+    {
+      struct timespec tm;
+      tm.tv_nsec = m_t.tv_nsec;
+      tm.tv_sec  = m_t.tv_sec;
+      tm.tv_nsec += MAIN_THREAD_PERIOD*1000;
+      while( tm.tv_nsec >= NSEC_PER_SEC ){
+        tm.tv_nsec -= NSEC_PER_SEC;
+        tm.tv_sec++;
+      }
+      clock_nanosleep( CLOCK_MONOTONIC, TIMER_ABSTIME, &tm, NULL );
+    }
+
+    if(cntr > 100) {
+      cntr = 0;
+      max_interval = 0.0;
+    }
+    static timespec n_t;
+    clock_gettime( CLOCK_MONOTONIC, &n_t );
+    const double measured_interval = ((n_t.tv_sec - m_t.tv_sec)*NSEC_PER_SEC + (n_t.tv_nsec - m_t.tv_nsec))/1000.0;
+    if (measured_interval > max_interval) max_interval = measured_interval;
+    if(ave_interval == 0.0) {
+      ave_interval = measured_interval;
+    } else {
+      ave_interval = (measured_interval + (100 - 1)*ave_interval)/100.0;
+    }
+    m_t.tv_sec = n_t.tv_sec;
+    m_t.tv_nsec = n_t.tv_nsec;
+    cntr++;
   }
 
   if (!no_display) {

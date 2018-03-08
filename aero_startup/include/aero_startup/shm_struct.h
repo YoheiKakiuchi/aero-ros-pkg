@@ -5,6 +5,7 @@
 #define MAX_IMU_NUM 2
 #define MAX_FSENSOR_NUM 4
 
+#define MAX_WHEEL_NUM 8
 #define MAX_JOINT_NAME_LENGTH 64
 struct shm_struct {
   float ref_angle[MAX_JOINT_NUM];
@@ -33,6 +34,9 @@ struct shm_struct {
 
   float force_sensor[MAX_FSENSOR_NUM][6];
   float force_sensor_offset[MAX_FSENSOR_NUM][6];
+
+  int16_t wheel_velocity[MAX_WHEEL_NUM];
+  int     wheel_enable[MAX_WHEEL_NUM];
 
   long frame;
   float jitter;

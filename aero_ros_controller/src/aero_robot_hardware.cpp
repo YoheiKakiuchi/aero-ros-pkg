@@ -40,6 +40,8 @@
 #include "aero_robot_hardware.h"
 #include <urdf/model.h>
 
+#include <thread>
+
 namespace aero_robot_hardware
 {
 
@@ -178,8 +180,19 @@ void AeroRobotHW::readPos(const ros::Time& time, const ros::Duration& period, bo
 
   // TODO: thrading?? or making no wait
   if (update) {
+#if 0
     controller_upper_->update_position();
     controller_lower_->update_position();
+#else
+    std::thread t1([&](){
+        controller_upper_->update_position();
+      });
+    std::thread t2([&](){
+        controller_lower_->update_position();
+      });
+    t1.join();
+    t2.join();
+#endif
   }
   // get upper actual positions
   std::vector<int16_t> upper_act_strokes =
@@ -312,8 +325,19 @@ void AeroRobotHW::write(const ros::Time& time, const ros::Duration& period)
 
   uint16_t time_csec = static_cast<uint16_t>((OVERWRAP_SCALE_ * CONTROL_PERIOD_US_)/(1000*10));
   mutex_lower_.lock();
+#if 0
   controller_upper_->set_position(upper_strokes, time_csec);
   controller_lower_->set_position(lower_strokes, time_csec);
+#else
+  std::thread t1([&](){
+      controller_upper_->set_position(upper_strokes, time_csec);
+    });
+  std::thread t2([&](){
+      controller_lower_->set_position(lower_strokes, time_csec);
+    });
+  t1.join();
+  t2.join();
+#endif
   mutex_lower_.unlock();
 
   // read

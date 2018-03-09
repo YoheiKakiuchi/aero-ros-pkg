@@ -62,12 +62,12 @@ void AeroMoveBase::CmdVelCallback(const geometry_msgs::TwistConstPtr& _cmd_vel)
   vth_ = _cmd_vel->angular.z;
 
   //check servo state
-  if (!servo_){
+  if ( !servo_ ) {
     servo_ = true;
     hw_->startWheelServo();
   }
 
-  std::vector<int16_t> int_vel;
+  std::vector<int16_t> int_vel(num_of_wheels_);
 
   // convert velocity to wheel
   base_config_.VelocityToWheel(vx_, vy_, vth_, int_vel);

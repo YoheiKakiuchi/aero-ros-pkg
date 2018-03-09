@@ -246,7 +246,7 @@ void AeroRobotHW::readPos(const ros::Time& time, const ros::Duration& period, bo
 
 void AeroRobotHW::read(const ros::Time& time, const ros::Duration& period)
 {
-  //readPos(time, period, true);
+  readPos(time, period, true);
   return;
 }
 
@@ -317,7 +317,7 @@ void AeroRobotHW::write(const ros::Time& time, const ros::Duration& period)
   mutex_lower_.unlock();
 
   // read
-  readPos(time, period, false);
+  //readPos(time, period, false);
 #if 0
   for(unsigned int j=0; j < number_of_angles_; j++) {
     switch (joint_control_methods_[j]) {
@@ -349,6 +349,9 @@ void AeroRobotHW::write(const ros::Time& time, const ros::Duration& period)
 }
 
 void AeroRobotHW::writeWheel(const std::vector< std::string> &_names, const std::vector<int16_t> &_vel, double _tm_sec) {
+  ROS_DEBUG("wheel %d %d %d %d",
+            _vel[0], _vel[1], _vel[2], _vel[3]);
+
   mutex_lower_.lock();
   std::vector<int32_t> joint_to_wheel_indices(AERO_DOF_WHEEL);
   for (size_t i = 0; i < _names.size(); ++i) {
@@ -371,12 +374,16 @@ void AeroRobotHW::writeWheel(const std::vector< std::string> &_names, const std:
 }
 
 void AeroRobotHW::startWheelServo() {
+  ROS_DEBUG("servo on");
+
   mutex_lower_.lock();
   controller_lower_->wheel_on();
   mutex_lower_.unlock();
 }
 
 void AeroRobotHW::stopWheelServo() {
+  ROS_DEBUG("servo off");
+
   mutex_lower_.lock();
   controller_lower_->wheel_only_off();
   mutex_lower_.unlock();

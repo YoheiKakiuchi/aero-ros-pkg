@@ -17,6 +17,8 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES robot_interface
   CATKIN_DEPENDS
     roscpp
     std_msgs
@@ -28,9 +30,11 @@ catkin_package(
     angles
     urdf
     aero_startup
-#    pluginlib
-  # LIBRARIES ${PROJECT_NAME} default_robot_hw_sim
+    #    pluginlib
 )
+
+find_package(Eigen3 REQUIRED)
+##find_package(Boost REQUIRED COMPONENTS thread)
 
 link_directories(
   ${catkin_LIBRARY_DIRS}
@@ -38,7 +42,8 @@ link_directories(
 
 include_directories(include
   ${catkin_INCLUDE_DIRS}
-  ${Boost_INCLUDE_DIR}
+  ${Boost_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
 )
 
 # add c++ dependencies :
@@ -55,9 +60,13 @@ else()
   message(FATAL "c++11 required but not supported")
 endif()
 
-## Libraries
+## Executable
 add_executable(${PROJECT_NAME} src/aero_ros_controller.cpp src/aero_robot_hardware.cpp src/AeroMoveBaseRH.cc)
 target_link_libraries(${PROJECT_NAME} aero_controllers ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+
+## Library
+add_library(robot_interface src/RobotInterface.cc )
+target_link_libraries(robot_interface ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 ## Install
 install(TARGETS ${PROJECT_NAME}
@@ -72,3 +81,7 @@ install(TARGETS ${PROJECT_NAME}
 #install(FILES robot_hw_sim_plugins.xml
 #  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 #)
+
+####
+add_executable(aero_interface_test src/AeroInterfaceTest.cc)
+target_link_libraries(aero_interface_test ${catkin_LIBRARIES} ${Boost_LIBRARIES} robot_interface )

@@ -50,11 +50,29 @@ bool AeroRobotHW::init(ros::NodeHandle& root_nh, ros::NodeHandle &robot_hw_nh)//
   std::string port_upper("/dev/aero_upper");
   std::string port_lower("/dev/aero_lower");
 
-  CONTROL_PERIOD_US_ = 50*1000; // 50ms
-  OVERWRAP_SCALE_    = 2.8;     //
+  // reading paramerters
+  if (robot_hw_nh.hasParam("port_upper")) {
+    robot_hw_nh.getParam("port_upper", port_upper);
+  }
+  if (robot_hw_nh.hasParam("port_lower")) {
+    robot_hw_nh.getParam("port_lower", port_lower);
+  }
+  if (robot_hw_nh.hasParam("controller_rate")) {
+    double rate;
+    robot_hw_nh.getParam("controller_rate", rate);
+    CONTROL_PERIOD_US_ = (1000*1000)/rate;
+  } else {
+    CONTROL_PERIOD_US_ = 50*1000; // 50ms
+  }
+  if (robot_hw_nh.hasParam("overwarp_scale")) {
+    double scl;
+    robot_hw_nh.getParam("overwarp_scale", scl);
+    OVERWRAP_SCALE_    = scl;     //
+  }  else {
+    OVERWRAP_SCALE_    = 2.8;     //
+  }
 
-  // TODO: read from params
-
+  // create controllersd
   controller_upper_.reset(new AeroUpperController(port_upper));
   controller_lower_.reset(new AeroLowerController(port_lower));
 
@@ -94,7 +112,7 @@ bool AeroRobotHW::init(ros::NodeHandle& root_nh, ros::NodeHandle &robot_hw_nh)//
   initialized_flag_ = false;
 
   std::string model_str;
-  if (!robot_hw_nh.getParam("robot_description", model_str)) {
+  if (!root_nh.getParam("robot_description", model_str)) {
     ROS_ERROR("Failed to get model from robot_description");
     return false;
   }
@@ -180,7 +198,7 @@ void AeroRobotHW::readPos(const ros::Time& time, const ros::Duration& period, bo
 
   // TODO: thrading?? or making no wait
   if (update) {
-#if 0
+#if 0 // NO_THREAD
     controller_upper_->update_position();
     controller_lower_->update_position();
 #else
@@ -325,18 +343,21 @@ void AeroRobotHW::write(const ros::Time& time, const ros::Duration& period)
 
   uint16_t time_csec = static_cast<uint16_t>((OVERWRAP_SCALE_ * CONTROL_PERIOD_US_)/(1000*10));
   mutex_lower_.lock();
-#if 0
-  controller_upper_->set_position(upper_strokes, time_csec);
-  controller_lower_->set_position(lower_strokes, time_csec);
+  {
+#if 0 // NO_THREAD
+    controller_upper_->set_position(upper_strokes, time_csec);
+    controller_lower_->set_position(lower_strokes, time_csec);
 #else
-  std::thread t1([&](){
-      controller_upper_->set_position(upper_strokes, time_csec);
-    });
-  std::thread t2([&](){
-      controller_lower_->set_position(lower_strokes, time_csec);
-    });
-  t1.join();
-  t2.join();
+    std::thread t1([&](){
+        controller_upper_->set_position(upper_strokes, time_csec);
+      });
+    std::thread t2([&](){
+        controller_lower_->set_position(lower_strokes, time_csec);
+      });
+    t1.join();
+    t2.join();
+    usleep( 1000 * 2 ); // why needed?
+  }
 #endif
   mutex_lower_.unlock();
 

@@ -139,6 +139,9 @@ public:
   void startWheelServo();
   void stopWheelServo();
 
+  double getPeriod() { return ((double)CONTROL_PERIOD_US_) / (1000 * 1000); }
+  double getOverWrapScale() { return OVERWRAP_SCALE_; }
+
 protected:
   // Methods used to control a joint.
   enum ControlMethod {EFFORT, POSITION, POSITION_PID, VELOCITY, VELOCITY_PID};

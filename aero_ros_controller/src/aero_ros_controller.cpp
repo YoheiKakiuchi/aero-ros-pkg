@@ -55,7 +55,7 @@ int main(int argc, char** argv)
   AeroRobotHW hw;
 
   ros::NodeHandle nh;
-  ros::NodeHandle robot_nh("");
+  ros::NodeHandle robot_nh("~");
 
   if (!hw.init(nh, robot_nh)) {
     ROS_ERROR("Faild to initialize hardware");
@@ -69,20 +69,20 @@ int main(int argc, char** argv)
   ros::AsyncSpinner spinner(1);
   spinner.start();
 
-  double rate = 20; // rate = hw.getRate();
-  controller_manager::ControllerManager cm(&hw, robot_nh);
+  double period = hw.getPeriod();
+  controller_manager::ControllerManager cm(&hw, nh);
 
-  ROS_INFO("ControllerManager start with %f Hz", rate);
+  ROS_INFO("ControllerManager start with %f Hz", 1.0/period);
   // TODO: realtime loop
 
   int cntr = 0;
-  long main_thread_period_ns = (1.0/rate)*1000*1000*1000;
+  long main_thread_period_ns = period*1000*1000*1000;
   double max_interval = 0.0;
   double ave_interval = 0.0;
   timespec m_t;
   clock_gettime( CLOCK_MONOTONIC, &m_t );
 
-  ros::Rate r(rate);
+  ros::Rate r(1/period);
   ros::Time tm = ros::Time::now();
   while (ros::ok()) {
     {

@@ -42,6 +42,8 @@
 
 #include <mutex>
 
+#include <aero_ros_controller/RobotInterface.hh>
+
 namespace aero
 {
 #ifdef KINETIC
@@ -81,6 +83,30 @@ namespace aero
       /// @param[in] _move_group named target is declared with move group
       /// @param[in] _target target name, target list is in .srdf file in aero_moveit_config
     public: void setRobotStateToNamedTarget(std::string _move_group, std::string _target);
+
+      /// @brief solve IK and set result to robot model's angles
+      /// @param[in] _move_group IK is solved in this move group
+      /// @param[in] _pose IK target pose
+      /// @param[in] _eef_link end effector link name, this link gets closer to _pose
+      /// @param[in] _attempts the number of times IK is attempted
+      /// @return true is solved, false is unsolvable
+    public: bool setFromIK(std::string _move_group, const EigenTrans &_pose, std::string _eef_link="", int _attempts=10);
+      /// @brief solve IK and set result to robot model's angles
+      /// @param[in] _arm aero::arm::rarm or aero::arm::larm
+      /// @param[in] _range aero::ikrange::(arm|torso|lifter) is to describe joints used in IK
+      /// @param[in] _pose IK target pose
+      /// @param[in] _eef_link end effector link name, this link gets closer to _pose
+      /// @param[in] _attempts the number of times IK is attempted
+      /// @return true is solved, false is unsolvable
+    public: bool setFromIK(aero::arm _arm, aero::ikrange _range, const EigenTrans &_pose, std::string _eef_link="", int _attempts=10);
+      /// @brief solve IK and set result to robot model's angles
+      /// @param[in] _arm aero::arm::rarm or aero::arm::larm
+      /// @param[in] _range aero::ikrange::(arm|torso|lifter) is to describe joints used in IK
+      /// @param[in] _pose IK target pose
+      /// @param[in] _eef_link this link gets closer to _pose. you can use aero::eef::(hand|grasp|pick)
+      /// @param[in] _attempts the number of times IK is attempted
+      /// @return true is solved, false is unsolvable
+    public: bool setFromIK(aero::arm _arm, aero::ikrange _range, const EigenTrans &_pose, aero::eef _eef, int _attempts=10);
 
       /// @brief solve IK and set result to robot model's angles
       /// @param[in] _move_group IK is solved in this move group
@@ -198,12 +224,13 @@ namespace aero
       /// @param[in] _z target z in base_link coordinate
     protected: void lookAt_(double _x, double _y, double _z);
 
+#if 0 //TODO: MOVE
       /// @brief set the value to robot model's hand angle
       /// @param[in] _arm aero::arm::(rarm|larm)
       /// @param[in] _radian target radian
     public: virtual void setHand(aero::arm _arm, double _radian);
     protected: virtual void setHandsFromJointStates_();
-
+#endif
       /// @brief update the model's link poses based on angle values
     public: void updateLinkTransforms();
 
@@ -245,7 +272,7 @@ namespace aero
 
       /// @brief get waist position in base_link coordinate in robot model
       /// @return waist position
-    public: Eigen::Vector3d getWaistPosition();
+    public: EigenVec3 getWaistPosition();
       /// @brief get lifter relative position from top of the lifter in robot model
     public: void getLifter(std::map<aero::joint, double>& _xz);
 
@@ -268,12 +295,12 @@ namespace aero
       /// @brief get move group for moveit
       /// @param[in] _move_group move group name
       /// @return desired move group
-    public: AeroMoveGroup &getMoveGroup(std::string _move_group);
+    public: const robot_state::JointModelGroup *getJointModelGroup(std::string _move_group);
       /// @brief get move group for moveit
       /// @param[in] _arm arm which desired move group is associated
       /// @param[in] _range arm only, with torso, and with lifter are usable
       /// @return desired move group
-    public: AeroMoveGroup &getMoveGroup(aero::arm _arm, aero::ikrange _range);
+    public: const robot_state::JointModelGroup *getJointModelGroup(aero::arm _arm, aero::ikrange _range);
 
       // ------------------------------------------------------------
       // send to real robot
@@ -288,12 +315,12 @@ namespace aero
       /// @param[in] _arm witch arm to use
       /// @param[in] _range use arm only , with torso, or with lifter aero::ikrange::(arm|torso|lifter)
       /// @param[in] _time_ms execution time, and wait this time
-    public: void sendAngleVector(aero::arm _arm, aero::ikrange _range, int _time_ms); // _av in kinematic_state is used
+    public: void sendAngleVector(aero::arm _arm, aero::ikrange _range, int _time_ms, bool async=false); // _av in kinematic_state is used
       /// @brief send joint angles in robot model to real robot
       /// @attention use all joints on upper body
       /// @param[in] _time_ms execution time, and wait this time
       /// @param[in] _move_waist if it's aero::ikrange::lifter, the lifter will move
-    public: void sendAngleVector(int _time_ms, aero::ikrange _move_waist=aero::ikrange::torso); // all angles from kinematic_state is published
+    public: void sendAngleVector(int _time_ms, aero::ikrange _move_waist=aero::ikrange::torso, bool async=false); // all angles from kinematic_state is published
       /// @brief send joint angles in _av_map to real robot
       /// @param[in] _av_map map which has joint name and joint angle value
       /// @param[in] _time_ms execution time, and wait this time
@@ -348,8 +375,11 @@ namespace aero
       /// @param[in] _move_lifter if it's aero::ikrange::lifter, the lifter will move
     public: bool sendTrajectoryAsync(aero::trajectory _trajectory, int _time_ms, aero::ikrange _move_lifter=aero::ikrange::torso);
       /// @brief protected function. the base function of sendAngleVectorAsync
+    protected :void sendAngleVectorSync_(int _time_ms);
+    protected: void sendAngleVectorAsync_(int _time_ms, aero::ikrange _move_waist);
+    protected: void sendAngleVectorAsync_(aero::arm _arm, aero::ikrange _range, int _time_ms);
     protected: void sendAngleVectorAsync_(const std::vector<double> _av, const std::vector<std::string> _joint_names, const int _time_ms);
-    protected: void sendAngleVectorAsync_(std::string _move_group, int _time_ms); // _av in kinematic_state is used
+      //protected: void sendAngleVectorAsync_(std::string _move_group, int _time_ms); // _av in kinematic_state is used
 
       // @brief overwrite command speed on real robot
       // @param[in] _speed_factor < 1.0 for slow down, > 1.0 for speed up
@@ -360,7 +390,7 @@ namespace aero
       /// @param[in] _x desired x position in meters
       /// @param[in] _z desired z position in meters
       /// @param[in] _time_ms execution time, and sleep this time before this function returns
-    public: bool sendLifter(double _x, double _z, int _time_ms=5000); // m
+    public: bool sendLifter(double _x, double _z, int _time_ms=5000, bool _local=false, bool _async=false); // m
       /// @brief send lifter position to real robot
       /// @param[in] _x desired x position in mili meters
       /// @param[in] _z desired z position in mili meters
@@ -421,12 +451,11 @@ namespace aero
       /// sleeps a little before call waitInterpolation_ to guarantee the controller state
       /// @return if timeout occurs, returns false
     public: bool waitInterpolation(int _timeout_ms=0);
-      /// @brief prototype for waitInterpolation
-    protected: bool waitInterpolation_(int _timeout_ms=0);
 
       /// @brief waitInterpolation_ for wait off mode
     protected: void sleepInterpolation(int _time_ms);
 
+#if 0 // TODO: MOVE
       /// @brief send grasp command to real robot
       /// @param[in] _arm aero::arm::(rarm|larm)
       /// @param[in] _power grasp power from 0\% to 100\%
@@ -443,13 +472,18 @@ namespace aero
       /// @param[in] _arm aero::arm::(rarm|larm)
       /// @param[in] _rad desired angle in radian
     public: bool sendHand(aero::arm _arm, double _rad);
+#endif
 
+#if 0 // TODO: MOVE
     public: bool solveIKSequence(aero::GraspRequest &_grasp);
     public: std::string solveIKOneSequence(aero::arm _arm, geometry_msgs::Pose _pose, aero::ikrange _ik_range, std::vector<double> _av_ini, std::string _eef_link, std::vector<double> &_result);
     public: bool sendSequence(std::vector<int> _msecs={5000, 5000});
     public: bool sendPickIK(aero::GraspRequest &_grasp);
     public: bool sendPlaceIK(aero::GraspRequest &_grasp, double _push_height=0.03);
+#endif
 
+#if 0
+      // TODO: diveide source file
       // ------------------------------------------------------------
       // move_base functions
       // ------------------------------------------------------------
@@ -517,7 +551,7 @@ namespace aero
     public: bool checkMoveTo(geometry_msgs::Pose _pose);
       /// @brief protected function. due to move_base_pkg's bug, we use this
     protected: bool goPosTurnOnly_(double _rad, int _timeout_ms=20000);
-
+#endif
 
       // these varables are to use moveit libralies
       // don't care
@@ -526,15 +560,17 @@ namespace aero
     public: robot_model::RobotModelPtr kinematic_model;// robot model
     public: robot_state::RobotStatePtr kinematic_state;
       // lifter height only
-    protected: robot_model_loader::RobotModelLoader robot_model_loader_ho_;
-    public: robot_model::RobotModelPtr kinematic_model_ho;
-    public: robot_state::RobotStatePtr kinematic_state_ho;
+      //protected: robot_model_loader::RobotModelLoader robot_model_loader_ho_;
+      //public: robot_model::RobotModelPtr kinematic_model_ho;
+      //public: robot_state::RobotStatePtr kinematic_state_ho;
       // lifter on plane
-    protected: robot_model_loader::RobotModelLoader robot_model_loader_op_;
-    public: robot_model::RobotModelPtr kinematic_model_op;
-    public: robot_state::RobotStatePtr kinematic_state_op;
+      //protected: robot_model_loader::RobotModelLoader robot_model_loader_op_;
+      //public: robot_model::RobotModelPtr kinematic_model_op;
+      //public: robot_state::RobotStatePtr kinematic_state_op;
 
       // MoveGroup
+#if 0
+      // not using moveit ros
     public: AeroMoveGroup larm;
     public: AeroMoveGroup larm_with_torso;
     public: AeroMoveGroup larm_with_lifter;
@@ -545,23 +581,26 @@ namespace aero
     public: AeroMoveGroup upper_body;
     public: AeroMoveGroup torso;
     public: AeroMoveGroup head;
-
+#endif
       // JointModelGroup
     public: const robot_state::JointModelGroup* jmg_larm;
-    public: const robot_state::JointModelGroup* jmg_larm_with_torso;
+    public: const robot_state::JointModelGroup* jmg_larm_with_waist;
     public: const robot_state::JointModelGroup* jmg_larm_with_lifter;
-    public: const robot_state::JointModelGroup* jmg_larm_with_lifter_ho;
-    public: const robot_state::JointModelGroup* jmg_larm_with_lifter_op;
     public: const robot_state::JointModelGroup* jmg_rarm;
-    public: const robot_state::JointModelGroup* jmg_rarm_with_torso;
+    public: const robot_state::JointModelGroup* jmg_rarm_with_waist;
     public: const robot_state::JointModelGroup* jmg_rarm_with_lifter;
-    public: const robot_state::JointModelGroup* jmg_rarm_with_lifter_ho;
-    public: const robot_state::JointModelGroup* jmg_rarm_with_lifter_op;
+    public: const robot_state::JointModelGroup* jmg_waist;
     public: const robot_state::JointModelGroup* jmg_lifter;
+    public: const robot_state::JointModelGroup* jmg_torso;
+    public: const robot_state::JointModelGroup* jmg_both_arms;
+    public: const robot_state::JointModelGroup* jmg_upper_body;
+    public: const robot_state::JointModelGroup* jmg_whole_body;
+    public: const robot_state::JointModelGroup* jmg_head;
 
       // planning scene interface
-    public: moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+      //public: moveit::planning_interface::PlanningSceneInterface planning_scene_interface; // obsolate
 
+#if 0
       // moveit functions
     public: bool plan(std::string _move_group);
     public: bool execute();
@@ -569,48 +608,47 @@ namespace aero
     public: void setStartStateToCurrentState(std::string _move_group);
     public: void setNamedTarget(std::string _move_group, std::string _target);
     public: bool move(std::string _move_group);
+#endif
 
+#if 0
       // with linux_kinect
     public: void speakAsync(std::string _speech);
     public: void speak(std::string _speech, float _wait_sec);
-
+#endif
       // waitInterpolation settings
     public: inline void disableWaitInterpolation() {wait_ = false;};
     public: inline void enableWaitInterpolation() {wait_ = true;};
 
-      // callback functions
-    protected: void JointStateCallback_(const sensor_msgs::JointState::ConstPtr &_msg);
-
-    protected: ros::ServiceClient hand_grasp_client_;
-    protected: ros::ServiceClient joint_states_client_;
-    protected: ros::ServiceClient interpolation_client_;
-    protected: ros::Publisher display_publisher_;
-    protected: ros::Publisher angle_vector_publisher_;
+      //protected: ros::ServiceClient hand_grasp_client_;
+      //protected: ros::ServiceClient joint_states_client_;
+      //protected: ros::ServiceClient interpolation_client_;
+      //protected: ros::Publisher display_publisher_;
+      //protected: ros::Publisher angle_vector_publisher_;
     protected: ros::Publisher look_at_publisher_rpy_;
     protected: ros::Publisher look_at_publisher_base_;
     protected: ros::Publisher look_at_publisher_map_;
     protected: ros::Publisher look_at_publisher_base_static_;
     protected: ros::Publisher look_at_publisher_map_static_;
-    protected: ros::Publisher speech_publisher_;
-    protected: ros::Publisher cmd_vel_publisher_;
+      //protected: ros::Publisher speech_publisher_;
+      //protected: ros::Publisher cmd_vel_publisher_;
     protected: ros::Publisher lookat_target_publisher_;
     protected: ros::Publisher overwrite_speed_publisher_;
-    protected: ros::Subscriber joint_states_subscriber_;
-    protected: ros::ServiceClient waist_service_;
-    protected: ros::ServiceClient lifter_ik_service_;
-    protected: ros::ServiceClient send_angle_service_;
-    protected: ros::ServiceClient get_spot_;
-    protected: ros::ServiceClient check_move_to_;
+      //protected: ros::Subscriber joint_states_subscriber_;
+      //protected: ros::ServiceClient waist_service_;
+      //protected: ros::ServiceClient lifter_ik_service_;
+      //protected: ros::ServiceClient send_angle_service_;
+      //protected: ros::ServiceClient get_spot_;
+      //protected: ros::ServiceClient check_move_to_;
     protected: ros::ServiceClient get_saved_neck_positions_;
-    protected: actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> *ac_;
-    protected: AeroMoveGroup::Plan plan_;
-    protected: std::string planned_group_;
-    protected: bool height_only_;
-    protected: std::vector<std::vector<double>> trajectory_;
-    protected: std::vector<std::string> trajectory_groups_;
-    protected: sensor_msgs::JointState joint_states_;
-    protected: double lifter_thigh_link_;// lifter's upper link
-    protected: double lifter_foreleg_link_;// lifter's lower link
+      //protected: actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> *ac_;
+      //protected: AeroMoveGroup::Plan plan_;
+      //protected: std::string planned_group_;
+      //protected: bool height_only_;
+      //protected: std::vector<std::vector<double>> trajectory_;
+      //protected: std::vector<std::string> trajectory_groups_;
+      //protected: sensor_msgs::JointState joint_states_;
+      //protected: double lifter_thigh_link_;// lifter's upper link
+      //protected: double lifter_foreleg_link_;// lifter's lower link
       /// @brief flag of whether neck will be controlled by different thread or node
     protected: bool tracking_mode_flag_;
     protected: aero_startup::AeroSendJoints send_joints_srv_;
@@ -628,8 +666,9 @@ namespace aero
     protected: float so_retime_scale_;
     protected: bool so_update_;
 
-    protected: ros::ServiceClient in_action_service_;
+      //protected: ros::ServiceClient in_action_service_;
 
+    protected: boost::shared_ptr< robot_interface::RobotInterface> ri;
     };
     typedef std::shared_ptr<AeroMoveitInterface> AeroMoveitInterfacePtr;
   }

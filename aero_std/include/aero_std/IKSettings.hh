@@ -7,6 +7,14 @@
 
 namespace aero
 {
+  typedef Eigen::Affine3d      EigenTrans;
+  typedef Eigen::Vector3d      EigenVec3;
+  typedef Eigen::Matrix3d      EigenMat3;
+  typedef Eigen::Translation3d EigenTranslation;
+  typedef Eigen::Quaterniond   EigenQuaternion;
+  typedef Eigen::AngleAxisd    EigenAngleAxis;
+  typedef Eigen::Matrix<double, 6, 1> EigenVec6;
+
   enum struct arm : int {rarm, larm, either};
 
   enum struct ikrange : int {arm, torso, lifter};

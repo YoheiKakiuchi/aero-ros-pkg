@@ -72,6 +72,7 @@ public:
   virtual bool convertToAngleVector(const std::vector < std::string> &_names,
                                     const std::vector< double >      &_positions,
                                     angle_vector &_av);
+  virtual bool convertToAngles(const angle_vector &_av, joint_angle_map &_jmap);
 
   virtual bool sendAngles(const joint_angle_map &_jmap,
                           const double _tm, const ros::Time &_start);
@@ -89,6 +90,12 @@ public:
   virtual void potentio_vector (angle_vector &_ref);
 
   virtual bool wait_interpolation(double _tm = 0.0) = 0;
+
+#if 0
+  virtual bool interpolatingp() = 0;
+  virtual void stop_motion(double _stop_time = 0.0) = 0;
+  virtual void cancel_angle_vector (const std::string &_name, bool _wait) = 0;
+#endif
 
   virtual void getReferencePositions( joint_angle_map &_map) = 0;
   virtual void getActualPositions   ( joint_angle_map &_map) = 0;
@@ -114,6 +121,7 @@ class TrajectoryClient : public actionlib::SimpleActionClient < control_msgs::Fo
 public:
   typedef boost::shared_ptr< TrajectoryClient> Ptr;
   typedef actionlib::SimpleActionClient < control_msgs::FollowJointTrajectoryAction > ClientBase;
+
 public:
   TrajectoryClient(ros::NodeHandle &_nh,
                    const std::string &_act_name,
@@ -124,7 +132,8 @@ public:
   virtual void getReferencePositions( std::map < std::string, double> &_map);
   virtual void getActualPositions   ( std::map < std::string, double> &_map);
 
-  virtual bool wait_interpolation(double _tm = 0.0) {
+  virtual bool wait_interpolation(double _tm = 0.0)
+  {
     if(!sending_goal_) {
       return true;
     }
@@ -173,6 +182,9 @@ class RobotInterface : public TrajectoryBase
 private:
   typedef std::map <std::string,
                     TrajectoryClient::Ptr > controller_map;
+public:
+  typedef boost::shared_ptr< RobotInterface> Ptr;
+
 public:
   RobotInterface(ros::NodeHandle &_nh);
   ~RobotInterface();
@@ -225,13 +237,11 @@ private:
   void JointStateCallback_(const sensor_msgs::JointState::ConstPtr& _msg);
 
 protected:
-  //std::vector< std::string > joint_list_;
-
   controller_map controllers_;
   ros::NodeHandle local_nh_;
 
   ros::Subscriber joint_states_sub_;
-  // sensor_msgs::JointState joint_states_;
+
   ros::Time current_stamp_;
   std::map < std::string, double> current_positions_;
   std::map < std::string, double> current_velocities_;

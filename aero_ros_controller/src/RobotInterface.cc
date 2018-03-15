@@ -80,6 +80,17 @@ bool TrajectoryBase::convertToAngleVector(const std::vector < std::string> &_nam
   return convertToAngleVector(jmap, _av);
 }
 
+bool TrajectoryBase::convertToAngles(const angle_vector &_av, joint_angle_map &_jmap)
+{
+  int size = std::min(_av.size(), joint_list_.size());
+  if(size == 0) return false;
+  _jmap.clear();
+  for(int i = 0; i < size; i++) {
+    _jmap[joint_list_[i]] = _av[i];
+  }
+  return true;
+}
+
 bool TrajectoryBase::sendAngles(const joint_angle_map &_jmap,
                                 const double _tm, const ros::Time &_start)
 {
@@ -101,7 +112,8 @@ bool TrajectoryBase::sendAngles(const std::vector < std::string> &_names,
   }
 }
 
-void TrajectoryBase::send_angle_vector(const angle_vector &_av, const double _tm) {
+void TrajectoryBase::send_angle_vector(const angle_vector &_av, const double _tm)
+{
   ros::Time now = ros::Time::now();
   send_angle_vector(_av, _tm, now);
 }
@@ -139,8 +151,7 @@ TrajectoryClient::TrajectoryClient(ros::NodeHandle &_nh,
   if(!this->waitForServer(timeout)) {
     ROS_ERROR("timeout for waiting %s%s", _nh.getNamespace().c_str(), _act_name.c_str());
   }
-  if (true) {
-
+  if (true) { // USE spinner
     state_spinner_.reset(new ros::AsyncSpinner(1, &state_queue_));
     ros::SubscribeOptions sub_ops = ros::SubscribeOptions::create< control_msgs::JointTrajectoryControllerState >
       ( _state_name, 10,
@@ -154,10 +165,15 @@ TrajectoryClient::TrajectoryClient(ros::NodeHandle &_nh,
   }
 }
 
-TrajectoryClient::~TrajectoryClient() {
+TrajectoryClient::~TrajectoryClient()
+{
+  boost::mutex::scoped_lock lock(state_mtx_);
+  state_sub_.shutdown();
+  state_spinner_->stop();
 }
 
-void TrajectoryClient::getReferencePositions( joint_angle_map &_map) {
+void TrajectoryClient::getReferencePositions( joint_angle_map &_map)
+{
   boost::mutex::scoped_lock lock(state_mtx_);
   for(int i = 0; i < current_state_.desired.positions.size(); i++) {
     _map[current_state_.joint_names[i]]
@@ -165,7 +181,8 @@ void TrajectoryClient::getReferencePositions( joint_angle_map &_map) {
   }
 }
 
-void TrajectoryClient::getActualPositions( joint_angle_map &_map) {
+void TrajectoryClient::getActualPositions( joint_angle_map &_map)
+{
   boost::mutex::scoped_lock lock(state_mtx_);
   for(int i = 0; i < current_state_.actual.positions.size(); i++) {
     _map[current_state_.joint_names[i]]
@@ -173,7 +190,8 @@ void TrajectoryClient::getActualPositions( joint_angle_map &_map) {
   }
 }
 
-void TrajectoryClient::send_angle_vector(const angle_vector &_av, const double _tm, const ros::Time &_start) {
+void TrajectoryClient::send_angle_vector(const angle_vector &_av, const double _tm, const ros::Time &_start)
+{
   if (_av.size() != joint_list_.size()) {
     ROS_ERROR("er1"); //TODO
     return;
@@ -238,7 +256,8 @@ void TrajectoryClient::send_angle_vector_sequence(const angle_vector_sequence &_
 }
 
 //// callback
-void TrajectoryClient::StateCallback_(const control_msgs::JointTrajectoryControllerState::ConstPtr & _msg) {
+void TrajectoryClient::StateCallback_(const control_msgs::JointTrajectoryControllerState::ConstPtr & _msg)
+{
   // joint_states_ = *_msg;
   boost::mutex::scoped_lock lock(state_mtx_);
   current_state_ = *_msg;
@@ -265,10 +284,14 @@ RobotInterface::RobotInterface(ros::NodeHandle &_nh) : local_nh_(_nh)
 
 RobotInterface::~RobotInterface()
 {
+  boost::mutex::scoped_lock lock(states_mtx_);
+  joint_states_sub_.shutdown();
+  joint_states_spinner_->stop();
 }
 
 bool RobotInterface::defineJointList(std::vector < std::string > &_jl)
 {
+  boost::mutex::scoped_lock lock(states_mtx_);
   // joint existing check
   for(std::string jname: _jl) {
     bool found = false;
@@ -290,6 +313,7 @@ bool RobotInterface::defineJointList(std::vector < std::string > &_jl)
 
 bool RobotInterface::updateJointList()
 {
+  boost::mutex::scoped_lock lock(states_mtx_);
   for(auto it = controllers_.begin(); it != controllers_.end(); it++) {
     const std::vector< std::string > &names = (it->second)->getJointNames();
     std::copy( names.begin(), names.end(), std::back_inserter(joint_list_) );
@@ -299,6 +323,7 @@ bool RobotInterface::updateJointList()
 
 bool RobotInterface::updateJointList(std::vector < std::string > &_controller_names_list)
 {
+  boost::mutex::scoped_lock lock(states_mtx_);
   for(std::string nm : _controller_names_list) {
     auto it = controllers_.find(nm);
     if (it != controllers_.end()) {
@@ -312,7 +337,8 @@ bool RobotInterface::updateJointList(std::vector < std::string > &_controller_na
   return true;
 }
 
-void RobotInterface::getReferencePositions( joint_angle_map &_map) {
+void RobotInterface::getReferencePositions( joint_angle_map &_map)
+{
   boost::mutex::scoped_lock lock(states_mtx_);
   for(auto it = controllers_.begin(); it != controllers_.end(); it++) {
     joint_angle_map map;
@@ -321,7 +347,8 @@ void RobotInterface::getReferencePositions( joint_angle_map &_map) {
   }
 }
 
-void RobotInterface::getActualPositions( joint_angle_map &_map) {
+void RobotInterface::getActualPositions( joint_angle_map &_map)
+{
   boost::mutex::scoped_lock lock(states_mtx_);
   _map = current_positions_;
 }
@@ -373,6 +400,7 @@ bool RobotInterface::add_controller (const std::string &_key,
                                      const std::vector< std::string> &_jnames,
                                      bool _update_joint_list)
 {
+  boost::mutex::scoped_lock lock(states_mtx_);
   boost::shared_ptr<TrajectoryClient > p(new TrajectoryClient(local_nh_, _action_name, _state_name, _jnames));
   if (!p->isServerConnected()) {
     return false;
@@ -388,6 +416,7 @@ bool RobotInterface::add_controller(const std::string &_key,
                                     const TrajectoryClient::Ptr &_p,
                                     bool _update_joint_list)
 {
+  boost::mutex::scoped_lock lock(states_mtx_);
   if (controllers_.find(_key) == controllers_.end()) {
     controllers_[_key] = _p;
     if (_update_joint_list) {
@@ -438,7 +467,8 @@ bool RobotInterface::wait_interpolation(const std::vector < std::string> &_names
 }
 
 //// callback
-void RobotInterface::JointStateCallback_(const sensor_msgs::JointState::ConstPtr& _msg) {
+void RobotInterface::JointStateCallback_(const sensor_msgs::JointState::ConstPtr& _msg)
+{
   // joint_states_ = *_msg;
   boost::mutex::scoped_lock lock(states_mtx_);
 
@@ -453,5 +483,3 @@ void RobotInterface::JointStateCallback_(const sensor_msgs::JointState::ConstPtr
     current_effort_[_msg->name[i]] = _msg->effort[i];
   }
 }
-
-

@@ -31,6 +31,9 @@
   <depend>urdf</depend>
 
   <depend>aero_startup</depend>
+
+  <depend>rostest</depend>
+
   <export>
     <!--gazebo_ros_control plugin="${prefix}/robot_hw_sim_plugins.xml"/-->
   </export>

@@ -60,11 +60,12 @@ class TrajectoryBase
 {
 public:
   TrajectoryBase() {}
-  TrajectoryBase(const std::vector< std::string > &_joint_list) : joint_list_(_joint_list) { }
+  TrajectoryBase(const std::vector< std::string > &_joint_list) : joint_list_(_joint_list), start_offset_(0.02)
+  { }
 
   ~TrajectoryBase() {};
 #if 0
-  virtual bool convertToAngleVector(const incex_angle_map &_imap,
+  virtual bool convertToAngleVector(const index_angle_map &_imap,
                                     angle_vector &_av);
 #endif
   virtual bool convertToAngleVector(const joint_angle_map &_jmap,
@@ -72,7 +73,7 @@ public:
   virtual bool convertToAngleVector(const std::vector < std::string> &_names,
                                     const std::vector< double >      &_positions,
                                     angle_vector &_av);
-  virtual bool convertToAngles(const angle_vector &_av, joint_angle_map &_jmap);
+  virtual bool convertToMap(const angle_vector &_av, joint_angle_map &_jmap);
 
   virtual bool sendAngles(const joint_angle_map &_jmap,
                           const double _tm, const ros::Time &_start);
@@ -113,6 +114,7 @@ public:
 protected:
   std::vector< std::string > joint_list_;
   std::string name_;
+  double start_offset_;
 };
 
 class TrajectoryClient : public actionlib::SimpleActionClient < control_msgs::FollowJointTrajectoryAction >, public TrajectoryBase
@@ -174,6 +176,7 @@ private:
 
   boost::mutex state_mtx_;
   bool sending_goal_;
+  bool updated_state_;
 };
 
 class RobotInterface : public TrajectoryBase
@@ -196,14 +199,17 @@ public:
                           const double _tm, const ros::Time &_start);
 
   using TrajectoryBase::send_angle_vector;
+  virtual void send_angle_vector(const angle_vector &_av, const double _tm, const std::string &_name);
+  virtual void send_angle_vector(const angle_vector &_av, const double _tm, const std::vector< std::string> &_names);
   virtual void send_angle_vector(const angle_vector &_av, const double _tm, const ros::Time &_start);
 
   using TrajectoryBase::send_angle_vector_sequence;
+  virtual void send_angle_vector_sequence(const angle_vector_sequence &_av_seq, const time_vector &_tm_seq, const std::string &_name);
+  virtual void send_angle_vector_sequence(const angle_vector_sequence &_av_seq, const time_vector &_tm_seq, const std::vector< std::string> &_names);
   virtual void send_angle_vector_sequence(const angle_vector_sequence &_av_seq, const time_vector &_tm_seq, const ros::Time &_start);
 
   virtual void getReferencePositions( std::map < std::string, double> &_map);
   virtual void getActualPositions   ( std::map < std::string, double> &_map);
-
 
   using TrajectoryBase::wait_interpolation;
   virtual bool wait_interpolation(double _tm = 0.0);
@@ -235,6 +241,15 @@ public:
 private:
   //// callback
   void JointStateCallback_(const sensor_msgs::JointState::ConstPtr& _msg);
+  void group2names_ (const std::string &_group, std::vector <std::string> &_names)
+  {
+    _names.resize(0);
+    auto it = controller_group_.find(_group);
+    if (it != controller_group_.end()) {
+      _names = it->second;
+    }
+  }
+  bool wait_interpolation_(const std::string &_name, double _tm = 0.0);
 
 protected:
   controller_map controllers_;
@@ -250,6 +265,9 @@ protected:
   boost::mutex states_mtx_;
   ros::CallbackQueue joint_states_queue_;
   boost::shared_ptr < ros::AsyncSpinner > joint_states_spinner_;
+
+  std::map< std::string, std::vector<std::string > > controller_group_;
+  bool updated_joint_state_;
 };
 
 }

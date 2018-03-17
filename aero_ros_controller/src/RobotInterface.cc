@@ -80,7 +80,7 @@ bool TrajectoryBase::convertToAngleVector(const std::vector < std::string> &_nam
   return convertToAngleVector(jmap, _av);
 }
 
-bool TrajectoryBase::convertToAngles(const angle_vector &_av, joint_angle_map &_jmap)
+bool TrajectoryBase::convertToMap(const angle_vector &_av, joint_angle_map &_jmap)
 {
   int size = std::min(_av.size(), joint_list_.size());
   if(size == 0) return false;
@@ -114,13 +114,13 @@ bool TrajectoryBase::sendAngles(const std::vector < std::string> &_names,
 
 void TrajectoryBase::send_angle_vector(const angle_vector &_av, const double _tm)
 {
-  ros::Time now = ros::Time::now();
+  ros::Time now = ros::Time::now() + ros::Duration(start_offset_);
   send_angle_vector(_av, _tm, now);
 }
 
 void TrajectoryBase::send_angle_vector_sequence(const angle_vector_sequence &_av_seq, const time_vector &_tm_seq)
 {
-  ros::Time now = ros::Time::now();
+  ros::Time now = ros::Time::now() + ros::Duration(start_offset_);
   send_angle_vector_sequence(_av_seq, _tm_seq, now);
 }
 
@@ -144,7 +144,7 @@ TrajectoryClient::TrajectoryClient(ros::NodeHandle &_nh,
                                    const std::string &_act_name,
                                    const std::string &_state_name,
                                    const std::vector<std::string > &_jnames) :
-  SimpleActionClient<control_msgs::FollowJointTrajectoryAction>(_nh, _act_name), TrajectoryBase(_jnames), sending_goal_(false)
+  SimpleActionClient<control_msgs::FollowJointTrajectoryAction>(_nh, _act_name), TrajectoryBase(_jnames), sending_goal_(false), updated_state_(false)
 {
   joint_list_ = _jnames;
   ros::Duration timeout(10);
@@ -163,6 +163,11 @@ TrajectoryClient::TrajectoryClient(ros::NodeHandle &_nh,
     state_sub_ = _nh.subscribe
       (_state_name, 10, &TrajectoryClient::StateCallback_, this);
   }
+  // wait first state !!!
+  while(!updated_state_) {
+    ros::Duration d(0.1);
+    d.sleep();
+  }
 }
 
 TrajectoryClient::~TrajectoryClient()
@@ -170,6 +175,7 @@ TrajectoryClient::~TrajectoryClient()
   boost::mutex::scoped_lock lock(state_mtx_);
   state_sub_.shutdown();
   state_spinner_->stop();
+  ROS_WARN("~ %s", name_.c_str());
 }
 
 void TrajectoryClient::getReferencePositions( joint_angle_map &_map)
@@ -261,11 +267,12 @@ void TrajectoryClient::StateCallback_(const control_msgs::JointTrajectoryControl
   // joint_states_ = *_msg;
   boost::mutex::scoped_lock lock(state_mtx_);
   current_state_ = *_msg;
+  updated_state_ = true;
 }
 
 //// RobotInterface ////
 
-RobotInterface::RobotInterface(ros::NodeHandle &_nh) : local_nh_(_nh)
+RobotInterface::RobotInterface(ros::NodeHandle &_nh) : local_nh_(_nh), updated_joint_state_(false)
 {
   joint_list_.resize(0);
   if (true) {
@@ -280,6 +287,11 @@ RobotInterface::RobotInterface(ros::NodeHandle &_nh) : local_nh_(_nh)
     joint_states_sub_ = _nh.subscribe
       ("joint_states", 10, &RobotInterface::JointStateCallback_, this);
   }
+  // wait first state !!!
+  while(!updated_joint_state_) {
+    ros::Duration d(0.1);
+    d.sleep();
+  }
 }
 
 RobotInterface::~RobotInterface()
@@ -287,6 +299,7 @@ RobotInterface::~RobotInterface()
   boost::mutex::scoped_lock lock(states_mtx_);
   joint_states_sub_.shutdown();
   joint_states_spinner_->stop();
+  ROS_WARN("~ RobotInterface ptr: %lx", (void *)this);
 }
 
 bool RobotInterface::defineJointList(std::vector < std::string > &_jl)
@@ -370,12 +383,71 @@ bool RobotInterface::sendAngles(const std::vector < std::string> &_names,
   }
 }
 
+void RobotInterface::send_angle_vector(const angle_vector &_av, const double _tm, const std::string &_name)
+{
+  std::vector< std::string> names;
+  group2names_(_name, names);
+  if(names.size() == 0) {
+    std::vector< std::string> nms;
+    nms.push_back(_name);
+    send_angle_vector(_av, _tm, nms);
+  } else {
+    send_angle_vector(_av, _tm, names);
+  }
+}
+
+void RobotInterface::send_angle_vector(const angle_vector &_av, const double _tm,
+                                       const std::vector< std::string> &_names)
+{
+  for(auto it = controllers_.begin(); it != controllers_.end(); it++) {
+    auto fname = std::find(_names.begin(), _names.end(), it->second->getName());
+    if (fname != _names.end()) {
+      angle_vector controller_av;
+      if(it->second->convertToAngleVector(joint_list_, _av, controller_av)) {
+        it->second->send_angle_vector(controller_av, _tm);
+      }
+    }
+  }
+}
+
 void RobotInterface::send_angle_vector(const angle_vector &_av, const double _tm, const ros::Time &_start)
 {
   for(auto it = controllers_.begin(); it != controllers_.end(); it++) {
     angle_vector controller_av;
     if(it->second->convertToAngleVector(joint_list_, _av, controller_av)) {
       it->second->send_angle_vector(controller_av, _tm, _start);
+    }
+  }
+}
+
+void RobotInterface::send_angle_vector_sequence(const angle_vector_sequence &_av_seq, const time_vector &_tm_seq,
+                                                const std::string &_name)
+{
+  std::vector< std::string> names;
+  group2names_(_name, names);
+  if(names.size() == 0) {
+    std::vector< std::string> nms;
+    nms.push_back(_name);
+    send_angle_vector_sequence(_av_seq, _tm_seq, nms);
+  } else {
+    send_angle_vector_sequence(_av_seq, _tm_seq, names);
+  }
+}
+
+void RobotInterface::send_angle_vector_sequence(const angle_vector_sequence &_av_seq, const time_vector &_tm_seq,
+                                                const std::vector< std::string> &_names)
+{
+  for(auto it = controllers_.begin(); it != controllers_.end(); it++) {
+    auto fname = std::find(_names.begin(), _names.end(), it->second->getName());
+    if (fname != _names.end()) {
+      angle_vector_sequence controller_av_seq(0);
+      for(angle_vector _av: _av_seq) {
+        angle_vector controller_av;
+        if(it->second->convertToAngleVector(joint_list_, _av, controller_av)) {
+          controller_av_seq.push_back(controller_av);
+        }
+      }
+      it->second->send_angle_vector_sequence(controller_av_seq, _tm_seq);
     }
   }
 }
@@ -445,21 +517,32 @@ bool RobotInterface::wait_interpolation(double _tm)
 
 bool RobotInterface::wait_interpolation(const std::string &_name, double _tm)
 {
-  bool ret = true;
-  auto cit = controllers_.find(_name);
-  if(cit != controllers_.end()) {
-    if( !((cit->second)->wait_interpolation(_tm)) ) {
-      ret = false;
-    }
+  std::vector <std::string > names;
+  group2names_(_name, names);
+  if(names.size() == 0) {
+    wait_interpolation_(_name, _tm);
+  } else {
+    wait_interpolation(names, _tm);
   }
-  return ret;
 }
 
 bool RobotInterface::wait_interpolation(const std::vector < std::string> &_names, double _tm)
 {
   bool ret = true;
   for(auto it = _names.begin(); it != _names.end(); it++) {
-    if(wait_interpolation(*it, _tm)) {
+    if(wait_interpolation_(*it, _tm)) {
+      ret = false;
+    }
+  }
+  return ret;
+}
+
+bool RobotInterface::wait_interpolation_(const std::string &_name, double _tm)
+{
+  bool ret = true;
+  auto cit = controllers_.find(_name);
+  if(cit != controllers_.end()) {
+    if( !((cit->second)->wait_interpolation(_tm)) ) {
       ret = false;
     }
   }
@@ -482,4 +565,5 @@ void RobotInterface::JointStateCallback_(const sensor_msgs::JointState::ConstPtr
   for(int i = 0; i < _msg->effort.size(); i++) {
     current_effort_[_msg->name[i]] = _msg->effort[i];
   }
+  updated_joint_state_ = true;
 }

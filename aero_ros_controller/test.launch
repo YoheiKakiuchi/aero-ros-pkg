@@ -47,17 +47,13 @@
         - waist_y_joint
         - waist_p_joint
         - waist_r_joint
-    lift_controller:
+    lifter_controller:
       type: position_controllers/JointTrajectoryController
       joints:
-        - ankle_joint
         - knee_joint
+        - ankle_joint
   </rosparam>
 
-  <pparam name="robot_description"
-         command="$(find xacro)/xacro --inorder '$(find aero_description)/robots/aero.urdf.xacro'" />
-  <pparam name="robot_description_semantic"
-         textfile="$(find aero_moveit_config_new)/config/AeroUpperRobot.srdf" />
   <include file="$(find aero_moveit_config_new)/launch/planning_context.launch">
     <arg name="load_robot_description" value="true"/>
   </include>
@@ -66,6 +62,6 @@
        pkg="robot_state_publisher" type="robot_state_publisher" />
 
   <node name="cm_spawner" pkg="controller_manager"
-        type="spawner" args="joint_state_controller larm_controller rarm_controller head_controller waist_controller lift_controller" />
+        type="spawner" args="joint_state_controller larm_controller rarm_controller head_controller waist_controller lifter_controller" />
 
 </launch>

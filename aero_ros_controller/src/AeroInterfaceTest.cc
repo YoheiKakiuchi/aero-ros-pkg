@@ -23,6 +23,8 @@ using namespace robot_interface;
 
 //// TEST for aero TypeF
 class AeroRobotInterface : public RobotInterface {
+public:
+  typedef boost::shared_ptr<AeroRobotInterface > Ptr;
 
 public:
   AeroRobotInterface(ros::NodeHandle &_nh) : RobotInterface(_nh) {
@@ -32,7 +34,8 @@ public:
                                     "rarm_controller/state",
                                     { "r_shoulder_p_joint", "r_shoulder_r_joint", "r_shoulder_y_joint",
                                         "r_elbow_joint", "r_wrist_y_joint", "r_wrist_p_joint", "r_wrist_r_joint",
-                                        "r_hand_y_joint" }
+                                        // "r_hand_y_joint", // jsk
+                                        }
                                     ));
     this->add_controller("rarm", rarm);
 
@@ -42,7 +45,8 @@ public:
                                     "larm_controller/state",
                                     { "l_shoulder_p_joint", "l_shoulder_r_joint", "l_shoulder_y_joint",
                                         "l_elbow_joint", "l_wrist_y_joint", "l_wrist_p_joint", "l_wrist_r_joint",
-                                        "l_hand_y_joint" }
+                                        // "l_hand_y_joint", // jsk
+                                        }
                                     ));
     this->add_controller("larm", larm);
 
@@ -72,30 +76,18 @@ public:
 
     // group settings
     controller_group_["both_arms"]  = {"rarm", "larm"};
-    controller_group_["upper_body"] = {"rarm", "larm", "torso", "head"};
+    controller_group_["upper_body"] = {"rarm", "larm", "waist", "head"};
     controller_group_["torso"]      = {"waist", "lifter"};
-  }
-  using RobotInterface::wait_interpolation;
-  virtual bool wait_interpolation(std::string &_name, double _tm = 0.0) {
-    { // find interpolation group
-      auto it = controller_group_.find(_name);
-      if (it != controller_group_.end()) {
-        return RobotInterface::wait_interpolation(it->second, _tm);
-      }
-    }
-    return RobotInterface::wait_interpolation(_name, _tm);
   }
 
 public:
-  TrajectoryClient::Ptr larm;
-  TrajectoryClient::Ptr rarm;
-  TrajectoryClient::Ptr waist;
-  TrajectoryClient::Ptr lifter;
-  TrajectoryClient::Ptr head;
+  TrajectoryClient::Ptr larm; // 8
+  TrajectoryClient::Ptr rarm; // 8
+  TrajectoryClient::Ptr waist; // 3
+  TrajectoryClient::Ptr lifter;// 2
+  TrajectoryClient::Ptr head;  // 3 // 24 jsk / 22 thk
   // TrajectoryClient::Ptr l_hand;
   // TrajectoryClient::Ptr r_hand;
-protected:
-  std::map< std::string, std::vector<std::string > > controller_group_;
 };
 
 int main (int argc, char **argv) {
@@ -103,7 +95,7 @@ int main (int argc, char **argv) {
   ros::NodeHandle nh;
 
   ROS_INFO("Create Interface");
-  AeroRobotInterface ari (nh);
+  AeroRobotInterface::Ptr ari(new AeroRobotInterface(nh));
   ROS_INFO("Create Interface: done");
 
   robot_interface::joint_angle_map a_map;
@@ -158,33 +150,151 @@ int main (int argc, char **argv) {
   b_map["neck_p_joint"]       = 0.15272;
   b_map["neck_r_joint"]       = -0.06109;
 
-  robot_interface::angle_vector rav =
-    {0.1, 0.2, 0.3,
-     0.4, 0.5, 0.6, 0.7,
-     0.8};
+#define PRINT_SIZE(_av)\
+  ROS_INFO_STREAM(#_av << ".size() =  " <<  _av.size())
 
-  ROS_INFO("send rarm angle-vector");
-  ari.rarm->send_angle_vector(rav, 3.0);
+  robot_interface::angle_vector a_av, b_av;
+  ari->convertToAngleVector(a_map, a_av);
+  ari->convertToAngleVector(b_map, b_av);
+  PRINT_SIZE(a_av);
 
-  std::vector<double > lav = {0.1, 0.2, 0.3,
-                             0.4, 0.5, 0.6, 0.7,
-                             0.8};
+  robot_interface::angle_vector l_a_av, l_b_av;
+  ari->larm->convertToAngleVector(a_map, l_a_av);
+  ari->larm->convertToAngleVector(b_map, l_b_av);
+  PRINT_SIZE(l_a_av);
+
+  robot_interface::angle_vector r_a_av, r_b_av;
+  ari->rarm->convertToAngleVector(a_map, r_a_av);
+  ari->rarm->convertToAngleVector(b_map, r_b_av);
+  robot_interface::angle_vector w_a_av, w_b_av;
+  robot_interface::angle_vector h_a_av, h_b_av;
+  robot_interface::angle_vector f_a_av, f_b_av;
+  ari->waist->convertToAngleVector(a_map, w_a_av);
+  ari->waist->convertToAngleVector(b_map, w_b_av);
+  ari->head->convertToAngleVector(a_map, h_a_av);
+  ari->head->convertToAngleVector(b_map, h_b_av);
+  ari->lifter->convertToAngleVector(a_map, f_a_av);
+  ari->lifter->convertToAngleVector(b_map, f_b_av);
+  PRINT_SIZE(w_a_av);
+  PRINT_SIZE(h_a_av);
+  PRINT_SIZE(f_a_av);
+
+#define PRINT_RUN_TIME(_func)\
+  {                                                                     \
+    ros::Time st = ros::Time::now();                                    \
+    _func ;                                                             \
+    ros::Time ed = ros::Time::now();                                    \
+    ROS_INFO_STREAM(#_func << " takes " << (ed - st).toSec() * 1000 << " [ms]"); \
+  }
+  PRINT_RUN_TIME(ari->wait_interpolation());
+  PRINT_RUN_TIME(ari->wait_interpolation("larm"));
+  PRINT_RUN_TIME(ari->wait_interpolation("upper_body"));
+
+  {
+    robot_interface::joint_angle_map r_map, a_map;
+    robot_interface::angle_vector r_av, a_av;
+    ari->head->getReferencePositions(r_map);
+    ari->head->getActualPositions(a_map);
+    ari->head->reference_vector(r_av);
+    ari->head->potentio_vector(a_av);
+    PRINT_SIZE(r_map);
+    PRINT_SIZE(a_map);
+    PRINT_SIZE(r_av);
+    PRINT_SIZE(a_av);
+  }
+
+  {
+    robot_interface::joint_angle_map r_map, a_map;
+    robot_interface::angle_vector r_av, a_av;
+    ari->getReferencePositions(r_map);
+    ari->getActualPositions(a_map);
+    ari->reference_vector(r_av);
+    ari->potentio_vector(a_av);
+#if 0
+    for(auto it = r_map.begin(); it != r_map.end(); it++) {
+      ROS_INFO("%s : %f", it->first.c_str(), it->second);
+    }
+#endif
+    PRINT_SIZE(r_map);
+    PRINT_SIZE(a_map);
+    PRINT_SIZE(r_av);
+    PRINT_SIZE(a_av);
+  }
 
   ROS_INFO("send larm angle-vector");
-  ari.larm->send_angle_vector(lav, 5.0);
-  ari.larm->wait_interpolation();
-  ari.larm->wait_interpolation(1.0);
+  ari->larm->send_angle_vector(l_a_av, 5.0);
+  PRINT_RUN_TIME(ari->larm->wait_interpolation(2.0));
+  {
+    robot_interface::angle_vector r_av, a_av;
+    ari->larm->reference_vector(r_av);
+    ari->larm->potentio_vector(a_av);
+    PRINT_SIZE(r_av);
+    PRINT_SIZE(a_av);
+    ROS_INFO("%f %f / %f - %f",
+             r_av[0], a_av[0],
+             l_a_av[0], l_b_av[0]);
+  }
+  PRINT_RUN_TIME(ari->larm->wait_interpolation());
+  PRINT_RUN_TIME(ari->larm->wait_interpolation());
 
+  {
+    robot_interface::angle_vector r_av, a_av;
+    ari->larm->reference_vector(r_av);
+    ari->larm->potentio_vector(a_av);
+    PRINT_SIZE(r_av);
+    PRINT_SIZE(a_av);
+    ROS_INFO("%f %f / %f - %f",
+             r_av[0], a_av[0],
+             l_a_av[0], l_b_av[0]);
+  }
+
+  ROS_INFO("send larm angle-vector / stop");
+  ari->larm->send_angle_vector(l_b_av, 5.0);
+  PRINT_RUN_TIME(ari->larm->wait_interpolation(2.0));
+  {
+    robot_interface::angle_vector r_av, a_av;
+    ari->larm->reference_vector(r_av);
+    ari->larm->potentio_vector(a_av);
+    PRINT_SIZE(r_av);
+    PRINT_SIZE(a_av);
+    ROS_INFO("%f %f / %f - %f",
+             r_av[0], a_av[0],
+             l_a_av[0], l_b_av[0]);
+  }
   // stop_motion
   {
     robot_interface::joint_angle_map _map;
-    ari.larm->getReferenceVector(_map);
+    ari->larm->getReferencePositions(_map);
     //ari.larm->getActualVector(_map);
-    Ros::Time start_ = ros::Time::now() + ros::Time(0.0);
-    ari.larm->sendAngles(_map, 0.1, start_);
+    ros::Time start_ = ros::Time::now() + ros::Duration(0.0);
+    ari->larm->sendAngles(_map, 0.1, start_);
   }
-  ari.larm->wait_interpolation();
+  PRINT_RUN_TIME(ari->larm->wait_interpolation());
+  PRINT_RUN_TIME(ari->larm->wait_interpolation());
+  {
+    robot_interface::angle_vector r_av, a_av;
+    ari->larm->reference_vector(r_av);
+    ari->larm->potentio_vector(a_av);
+    PRINT_SIZE(r_av);
+    PRINT_SIZE(a_av);
+    ROS_INFO("%f %f / %f - %f",
+             r_av[0], a_av[0],
+             l_a_av[0], l_b_av[0]);
+  }
 
+  {
+    std::vector< std::string> nms = {"larm" };
+    ari->send_angle_vector(b_av, 5.0, nms);
+    ari->send_angle_vector(b_av, 2.0, "rarm");
+    //ari->send_angle_vector(b_av, 5.0);
+    PRINT_RUN_TIME(ari->wait_interpolation("rarm"));
+    PRINT_RUN_TIME(ari->wait_interpolation("head"));
+    PRINT_RUN_TIME(ari->wait_interpolation("waist"));
+    PRINT_RUN_TIME(ari->wait_interpolation("upper_body"));
+    PRINT_RUN_TIME(ari->wait_interpolation());
+  }
+
+#if 0
   ////
   ROS_INFO("wait interpolation");
   bool ret = ari.wait_interpolation();
@@ -203,7 +313,9 @@ int main (int argc, char **argv) {
   robot_interface::angle_vector ref_av, act_av;
   ari.reference_vector(ref_av);
   ari.reference_vector(act_av);
+#endif
 
+#if 0
   ari.send_angle_vector();
 
   ari.send_angle_vector_sequence();
@@ -211,6 +323,7 @@ int main (int argc, char **argv) {
   ari.larm.send_angle_vector();
 
   ari.larm.send_angle_vector_sequence();
+#endif
 
 #if 0
   ros::Duration d(10);

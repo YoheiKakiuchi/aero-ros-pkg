@@ -54,10 +54,6 @@
         - ankle_joint
   </rosparam>
 
-  <pparam name="robot_description"
-         command="$(find xacro)/xacro --inorder '$(find aero_description)/robots/aero.urdf.xacro'" />
-  <pparam name="robot_description_semantic"
-         textfile="$(find aero_moveit_config_new)/config/AeroUpperRobot.srdf" />
   <include file="$(find aero_moveit_config_new)/launch/planning_context.launch">
     <arg name="load_robot_description" value="true"/>
   </include>

@@ -17,10 +17,11 @@ namespace aero
 
   enum struct arm : int {rarm, larm, either, both_arms};
 
-  enum struct ikrange : int {arm, torso, lifter};
+  enum struct ikrange : int {arm, waist, torso, lifter};
 
   enum struct eef : int {hand, grasp, pick, index, thumb, none};
 
+  enum struct pose : int {reset, reset_manip, move, initial};
   /// robot dependant
   enum struct joint : int {r_shoulder_p,
       r_shoulder_r,
@@ -146,8 +147,9 @@ namespace aero
     case aero::arm::larm:
       return "larm";
       break;
-      //case aero::arm::either:
-      //break;
+    case aero::arm::either:
+      return "either";
+      break;
     case aero::arm::both_arms:
       return "both_arms";
       break;
@@ -161,6 +163,9 @@ namespace aero
   {
     std::string mg = arm2string_(_arm);
     switch(_range) {
+    case aero::ikrange::waist:
+      mg = mg + "_with_waist";
+      break;
     case aero::ikrange::torso:
       mg = mg + "_with_torso";
       break;

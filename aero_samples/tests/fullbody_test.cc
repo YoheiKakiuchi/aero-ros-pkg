@@ -7,10 +7,12 @@ int main(int argc, char **argv)
   ros::NodeHandle nh;
   
   // init robot interface
-  aero::interface::AeroMoveitInterfacePtr robot(new aero::interface::AeroMoveitInterface(nh));
+  aero::interface::AeroMoveitInterface::Ptr robot(new aero::interface::AeroMoveitInterface(nh));
   ROS_INFO("reseting robot pose");
-  robot->sendResetManipPose();
-  sleep(1);
+  robot->setPoseVariables(aero::pose::reset_manip);
+  robot->sendAngleVector(3000);
+  sleep(3);
+
   robot->sendLifter(0.0,0.0);
 
   // set real robot's joint angles to the robot model in interface 
@@ -55,8 +57,9 @@ int main(int argc, char **argv)
   robot->sendAngleVector(1000);
 
   ROS_INFO("reseting robot pose");
-  robot->sendResetManipPose(1000);
-
+  robot->setPoseVariables(aero::pose::reset_manip);
+  robot->sendAngleVector(3000);
+  sleep(3);
 
   // test wrist and neck joints and hand
   double l_wrist_r_to = -0.5;
@@ -98,7 +101,9 @@ int main(int argc, char **argv)
 
   robot->resetLookAt();
   ROS_INFO("reseting robot pose");
-  robot->sendResetManipPose(1000);
+  robot->setPoseVariables(aero::pose::reset_manip);
+  robot->sendAngleVector(1000);
+  sleep(1);
 
 
   // test waist
@@ -125,7 +130,9 @@ int main(int argc, char **argv)
   robot->sendAngleVector(2000);
 
   ROS_INFO("reseting robot pose");
-  robot->sendResetManipPose(2000);
+  robot->setPoseVariables(aero::pose::reset_manip);
+  robot->sendAngleVector(2000);
+  sleep(2);
 
 
   // test lifter

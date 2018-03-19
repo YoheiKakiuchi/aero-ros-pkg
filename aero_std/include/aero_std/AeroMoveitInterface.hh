@@ -24,11 +24,10 @@
 #define USING_HAND   1
 #define USING_GRASP  0
 
-#include <moveit_msgs/DisplayRobotState.h>
-#include <moveit_msgs/DisplayTrajectory.h>
-
-#include <moveit_msgs/AttachedCollisionObject.h>
-#include <moveit_msgs/CollisionObject.h>
+//#include <moveit_msgs/DisplayRobotState.h>
+//#include <moveit_msgs/DisplayTrajectory.h>
+//#include <moveit_msgs/AttachedCollisionObject.h>
+//#include <moveit_msgs/CollisionObject.h>
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -40,9 +39,6 @@
 #include <aero_std/IKSettings.hh>
 #include <aero_std/GraspRequest.hh>
 #include <aero_std/interpolation_type.h>
-
-// ros controller
-#include <aero_ros_controller/RobotInterface.hh>
 
 // msgs
 #include <std_msgs/String.h>
@@ -56,6 +52,9 @@
 #include <aero_startup/AeroSendJoints.h>
 #include <aero_startup/AeroTorsoController.h>
 #include <aero_startup/HandControl.h>
+
+// ros controller
+#include <aero_std/AeroRobotInterface.hh>
 
 #include <mutex>
 
@@ -86,20 +85,20 @@ namespace aero
 
       /// @brief set robot model's angles
       /// @param[in] _av angle vector
-    public: void setRobotStateVariables(std::vector<double> &_av);
+    public: void setRobotStateVariables(const std::vector<double> &_av);
       /// @brief set robot model's angles
       /// param[in] _map map<joint name, radian>
-    public: void setRobotStateVariables(std::map<std::string, double> &_map);
+    public: void setRobotStateVariables(const std::map<std::string, double> &_map);
       /// @brief set robot model's angles, recommend using this!
       /// @param[in] _map map<joint name, radian>
-    public: void setRobotStateVariables(aero::joint_angle_map &_map);
+    public: void setRobotStateVariables(const aero::joint_angle_map &_map);
 
       /// @brief set current real robot's angles to robot model's angles
     public: void setRobotStateToCurrentState();
       /// @brief set named angles such as "reset-pose" to robot model's angles
       /// @param[in] _move_group named target is declared with move group
       /// @param[in] _target target name, target list is in .srdf file in aero_moveit_config
-    public: void setRobotStateToNamedTarget(std::string _move_group, std::string _target);
+    public: void setRobotStateToNamedTarget(const std::string &_move_group, const std::string &_target);
 
 #if 0
       /// @brief solve IK and set result to robot model's angles (this method is deprecated)
@@ -271,9 +270,11 @@ namespace aero
       /// @brief get joint angles from robot model, recommend
       /// @param[out] _map joint angles map
     public: void getRobotStateVariables(aero::joint_angle_map &_map);
+#if 0
       /// @brief get joint angles from robot model including hand angles
       /// @param[out] _map joint angles map
     public: void getRobotStateVariables(aero::fullarm &_map);
+#endif
 
     public: void setPoseVariables(const aero::pose &_pose);
     public: void getPoseVariables(const aero::pose &_pose, aero::joint_angle_map &_map);
@@ -317,7 +318,7 @@ namespace aero
       /// @brief get joint model group
       /// @param[in] _move_group move group name
       /// @return desired move group
-    public: const robot_state::JointModelGroup *getJointModelGroup(std::string _move_group);
+    public: const robot_state::JointModelGroup *getJointModelGroup(const std::string &_move_group);
       /// @brief get joint model group
       /// @param[in] _arm arm which desired move group is associated
       /// @param[in] _range arm only, with torso, and with lifter are usable
@@ -627,14 +628,14 @@ namespace aero
       // JointModelGroup
     public: const robot_state::JointModelGroup* jmg_larm;
     public: const robot_state::JointModelGroup* jmg_larm_with_waist;
-    public: const robot_state::JointModelGroup* jmg_larm_with_lifter;
+    public: const robot_state::JointModelGroup* jmg_larm_waist_lifter;
 #if 0
     public: const robot_state::JointModelGroup* jmg_larm_with_lifter_ho;
     public: const robot_state::JointModelGroup* jmg_larm_with_lifter_op;
 #endif
     public: const robot_state::JointModelGroup* jmg_rarm;
     public: const robot_state::JointModelGroup* jmg_rarm_with_waist;
-    public: const robot_state::JointModelGroup* jmg_rarm_with_lifter;
+    public: const robot_state::JointModelGroup* jmg_rarm_waist_lifter;
 #if 0
     public: const robot_state::JointModelGroup* jmg_rarm_with_lifter_ho;
     public: const robot_state::JointModelGroup* jmg_rarm_with_lifter_op;
@@ -646,6 +647,8 @@ namespace aero
     public: const robot_state::JointModelGroup* jmg_upper_body;
     public: const robot_state::JointModelGroup* jmg_whole_body;
     public: const robot_state::JointModelGroup* jmg_head;
+
+    private: std::map<std::string, const robot_state::JointModelGroup* > joint_model_group_map;
 #if 0
       // planning scene interface
     public: moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
@@ -654,7 +657,7 @@ namespace aero
     public: bool execute();
     public: void viewTrajectory();
     public: void setStartStateToCurrentState(std::string _move_group);
-    public: void setNamedTarget(std::string _move_group, std::string _target);
+    public: void setNamedTarget(const std::string &_move_group, const std::string &_target);
     public: bool move(std::string _move_group);
 
       // with linux_kinect
@@ -741,7 +744,7 @@ namespace aero
     protected: ros::ServiceClient in_action_service_;
 #endif
 
-    protected: boost::shared_ptr< robot_interface::RobotInterface> ri;
+    protected: boost::shared_ptr< aero::AeroRobotInterface> ri;
     };
   }
 }

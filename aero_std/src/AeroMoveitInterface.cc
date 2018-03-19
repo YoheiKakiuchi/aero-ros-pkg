@@ -3,6 +3,10 @@
 //////////////////////////////////////////////////
 aero::interface::AeroMoveitInterface::AeroMoveitInterface(ros::NodeHandle _nh, std::string _rd)
 {
+  ROS_INFO("start creating robot_interface");
+
+  ri.reset(new aero::AeroRobotInterface(_nh));
+
 #if 0
   // publishers
   speech_publisher_ = _nh.advertise<std_msgs::String>
@@ -98,20 +102,60 @@ aero::interface::AeroMoveitInterface::AeroMoveitInterface(ros::NodeHandle _nh, s
 
   // JointModelGroup
   ROS_INFO("start loading joint model groups");
+
+#define _ADD_JMG_MAP(name)                      \
+  { jmg_##name = kinematic_model->getJointModelGroup(#name); \
+    if ( !jmg_##name ) {                                     \
+      ROS_ERROR("JointModelGroup: " #name " is not found");  \
+    } else {                                                 \
+      joint_model_group_map[#name] = jmg_##name;             \
+    }                                                        \
+  }
+
+  _ADD_JMG_MAP(larm);
+  _ADD_JMG_MAP(larm_with_waist);
+  _ADD_JMG_MAP(larm_waist_lifter);
+  _ADD_JMG_MAP(rarm);
+  _ADD_JMG_MAP(rarm_with_waist);
+  _ADD_JMG_MAP(rarm_waist_lifter);
+
+  _ADD_JMG_MAP(lifter);
+  _ADD_JMG_MAP(waist);
+  _ADD_JMG_MAP(torso);
+  _ADD_JMG_MAP(both_arms);
+  _ADD_JMG_MAP(upper_body);
+  _ADD_JMG_MAP(whole_body);
+  _ADD_JMG_MAP(head);
+#if 0
   jmg_larm = kinematic_model->getJointModelGroup("larm");
   jmg_larm_with_waist = kinematic_model->getJointModelGroup("larm_with_waist");
-  jmg_larm_with_lifter = kinematic_model->getJointModelGroup("larm_with_lifter");
+  jmg_larm_waist_lifter = kinematic_model->getJointModelGroup("larm_waist_lifter");
   jmg_rarm = kinematic_model->getJointModelGroup("rarm");
-  jmg_rarm_with_waist = kinematic_model->getJointModelGroup("rarm_with_torso");
-  jmg_rarm_with_lifter = kinematic_model->getJointModelGroup("rarm_with_lifter");
-  jmg_lifter = kinematic_model->getJointModelGroup("lifter");
+  jmg_rarm_with_waist = kinematic_model->getJointModelGroup("rarm_with_waist");
+  jmg_rarm_waist_lifter = kinematic_model->getJointModelGroup("rarm_waist_lifter");
 
+  jmg_lifter = kinematic_model->getJointModelGroup("lifter");
   jmg_waist = kinematic_model->getJointModelGroup("waist");
   jmg_torso = kinematic_model->getJointModelGroup("torso");
   jmg_both_arms = kinematic_model->getJointModelGroup("both_arms");
   jmg_upper_body = kinematic_model->getJointModelGroup("upper_body");
   jmg_whole_body = kinematic_model->getJointModelGroup("whole_body");
   jmg_head = kinematic_model->getJointModelGroup("head");
+
+  joint_model_group_map["larm"] = jmg_larm;
+  joint_model_group_map["larm_with_waist"] = jmg_larm_with_waist;
+  joint_model_group_map["larm_waist_lifter"] = jmg_larm_waist_lifter;
+  joint_model_group_map["rarm"] = jmg_rarm;
+  joint_model_group_map["rarm_with_waist"] = jmg_rarm_with_waist;
+  joint_model_group_map["rarm_waist_lifter"] = jmg_rarm_waist_lifter;
+  joint_model_group_map["lifter"] = jmg_lifter;
+  joint_model_group_map["waist"] = jmg_waist;
+  joint_model_group_map["torso"] = jmg_torso;
+  joint_model_group_map["both_arms"] = jmg_both_arms;
+  joint_model_group_map["upper_body"] = jmg_upper_body;
+  joint_model_group_map["whole_body"] = jmg_whole_body;
+  joint_model_group_map["head"] = jmg_head;
+#endif
 
   //variables
   tracking_mode_flag_ = false;
@@ -134,19 +178,19 @@ aero::interface::AeroMoveitInterface::~AeroMoveitInterface()
 }
 
 //////////////////////////////////////////////////
-void aero::interface::AeroMoveitInterface::setRobotStateVariables(std::vector<double> &_av)
+void aero::interface::AeroMoveitInterface::setRobotStateVariables(const std::vector<double> &_av)
 {
   kinematic_state->setVariablePositions(_av);
 }
 
 //////////////////////////////////////////////////
-void aero::interface::AeroMoveitInterface::setRobotStateVariables(std::map<std::string, double> &_map)
+void aero::interface::AeroMoveitInterface::setRobotStateVariables(const std::map<std::string, double> &_map)
 {
   kinematic_state->setVariablePositions(_map);
 }
 
 //////////////////////////////////////////////////
-void aero::interface::AeroMoveitInterface::setRobotStateVariables(aero::joint_angle_map &_map)
+void aero::interface::AeroMoveitInterface::setRobotStateVariables(const aero::joint_angle_map &_map)
 {
   std::map<std::string, double> map;
   aero::jointMap2StringMap(_map, map);
@@ -165,7 +209,7 @@ void aero::interface::AeroMoveitInterface::setRobotStateToCurrentState()
 }
 
 //////////////////////////////////////////////////
-void aero::interface::AeroMoveitInterface::setRobotStateToNamedTarget(std::string _move_group, std::string _target)
+void aero::interface::AeroMoveitInterface::setRobotStateToNamedTarget(const std::string &_move_group, const std::string &_target)
 {
   std::map<std::string, double> jnamemap;
   getJointModelGroup(_move_group)->getVariableDefaultPositions(_target, jnamemap);
@@ -273,15 +317,20 @@ bool aero::interface::AeroMoveitInterface::setLifter(double _x, double _z, bool 
 //////////////////////////////////////////////////
 bool aero::interface::AeroMoveitInterface::lifter_ik_(double _x, double _z, std::vector<double>& _ans_xz)
 {
+  ROS_DEBUG("lifter ik %f %f", _x, _z);
   aero::Transform initial_trans = aero::Translation(0, 0, 0.725) * aero::Quaternion::Identity(); // typeB_lifter
-  aero::Transform diff_trans = aero::Translation(_x, 0, - _z) * aero::Quaternion::Identity();
+  aero::Transform diff_trans = aero::Translation(_x, 0, _z) * aero::Quaternion::Identity();
   aero::Transform base2top = initial_trans * diff_trans;
 
   const aero::Transform &base_trans = kinematic_state->getGlobalLinkTransform("lifter_base_link");
   aero::Transform _pose = base_trans * base2top;
 
+  ROS_DEBUG_STREAM("pose: " << _pose);
+
   int _attempts = 3;
   bool found_ik = kinematic_state->setFromIK(jmg_lifter, _pose, _attempts, 0.1);
+
+  ROS_DEBUG("lifter: found_ik %d", found_ik);
 
   _ans_xz.resize(2);
   _ans_xz[0] = _x;
@@ -565,18 +614,18 @@ void aero::interface::AeroMoveitInterface::getRobotStateVariables(std::vector<do
 void aero::interface::AeroMoveitInterface::getRobotStateVariables(std::map<std::string, double> &_map)
 {
   _map.clear();
-  std::vector<std::string> upper_names, lifter_names;
-  upper_names  = jmg_upper_body->getVariableNames();
-  lifter_names = jmg_lifter    ->getVariableNames();
-
-  std::vector<std::string> names;
-  names.reserve(upper_names.size() + lifter_names.size());
-  std::copy(upper_names.begin(), upper_names.end(), std::back_inserter(names));
-  std::copy(lifter_names.begin(), lifter_names.end(), std::back_inserter(names));
+  const std::vector<std::string> &names = jmg_whole_body->getVariableNames();
 
   for (int i =0; i < names.size(); i++) {
-    _map[names[i]] = kinematic_state->getVariablePosition(i);
+    _map[names[i]] = kinematic_state->getVariablePosition(names[i]);
   }
+#if 0 // ALL NAMES
+  const std::vector<std::string> &names = kinematic_state->getVariableNames();
+  double *pos = kinematic_state->getVariablePositions();
+  for (int i =0; i < names.size(); i++) {
+    _map[names[i]] = pos[i];
+  }
+#endif
 }
 
 //////////////////////////////////////////////////
@@ -586,7 +635,7 @@ void aero::interface::AeroMoveitInterface::getRobotStateVariables(aero::joint_an
   getRobotStateVariables(map_tmp);
   aero::stringMap2JointMap(map_tmp, _map);
 }
-
+#if 0
 //////////////////////////////////////////////////
 void aero::interface::AeroMoveitInterface::getRobotStateVariables(aero::fullarm &_map)
 {
@@ -596,18 +645,22 @@ void aero::interface::AeroMoveitInterface::getRobotStateVariables(aero::fullarm 
   _map.l_hand = getHand(aero::arm::larm);
   _map.r_hand = getHand(aero::arm::rarm);
 }
-
+#endif
 //////////////////////////////////////////////////
 void aero::interface::AeroMoveitInterface::setPoseVariables(const aero::pose &_pose)
 {
   switch(_pose) {
   case aero::pose::reset:
+    setRobotStateToNamedTarget("upper_body", "reset-manip-pose");
     break;
   case aero::pose::reset_manip:
+    setRobotStateToNamedTarget("upper_body", "reset-pose");
     break;
   case aero::pose::move:
+    setRobotStateToNamedTarget("upper_body", "move-safe");
     break;
   case aero::pose::initial:
+    setRobotStateToNamedTarget("upper_body", "initial");
     break;
   default:
     break;
@@ -629,7 +682,8 @@ void aero::interface::AeroMoveitInterface::getResetManipPose(aero::joint_angle_m
 {
   aero::joint_angle_map save;
   getRobotStateVariables(save); // store variables
-  setRobotStateToNamedTarget("upper_body", "reset-pose");
+  //setRobotStateToNamedTarget("upper_body", "reset-pose");
+  setPoseVariables(aero::pose::reset_manip);
   getRobotStateVariables(_map); // setup return variable
   setRobotStateVariables(save); // restore variables
 }
@@ -952,12 +1006,19 @@ bool aero::interface::AeroMoveitInterface::sendLifter(double _x, double _z, int 
   // TODO: _local, _async
   std::map<std::string, double> _map;
   getRobotStateVariables(_map);
+  ROS_DEBUG("sendLifter %f %f %d", _x, _z, _time_ms);
   if(setLifter(_x, _z)) {
+    ROS_DEBUG("sendLifter: set success");
     std::vector<double> av;
     const std::vector<std::string> &names = jmg_lifter->getVariableNames();
     kinematic_state->copyJointGroupPositions("lifter", av);
     ros::Time start_time = ros::Time::now() + ros::Duration(0.05); // starting 0.05sec after now
+    ROS_DEBUG("sendLifter: send");
     ri->sendAngles(names, av, _time_ms*0.001, start_time);
+    if(!_async) {
+      ri->wait_interpolation("lifter");
+      ROS_DEBUG("sendLifter: wait end");
+    }
     setRobotStateVariables(_map); // revert state
     return true;
   }
@@ -1974,34 +2035,19 @@ void aero::interface::AeroMoveitInterface::JointStateCallback_(const sensor_msgs
 #endif
 
 /////////////////////////////////////////////////
-const robot_state::JointModelGroup* aero::interface::AeroMoveitInterface::getJointModelGroup(std::string _move_group)
+const robot_state::JointModelGroup* aero::interface::AeroMoveitInterface::getJointModelGroup(const std::string &_move_group)
 {
-  if (_move_group == "larm") {
-    return this->jmg_larm;
-  } else if (_move_group == "larm_with_waist") {
-    return this->jmg_larm_with_waist;
-  } else if (_move_group == "larm_with_lifter") {
-    return this->jmg_larm_with_lifter;
-  } else if (_move_group == "rarm") {
-    return this->jmg_rarm;
-  } else if (_move_group == "rarm_with_waist") {
-    return this->jmg_rarm_with_waist;
-  } else if (_move_group == "rarm_with_lifter") {
-    return this->jmg_rarm_with_lifter;
-  } else if (_move_group == "upper_body") {
-    return this->jmg_upper_body;
-  } else if (_move_group == "head") {
-    return this->jmg_head;
-  } else if(_move_group == "waist") {
-    return this->jmg_waist;
-  } else if(_move_group == "torso") {
-    return this->jmg_torso;
-  } else if (_move_group == "lifter") {
-    return this->jmg_lifter;
-  } else {
-    ROS_WARN("error :: move_group [%s] doesn't exist", _move_group.c_str());
-    return NULL;
+  auto it = joint_model_group_map.find(_move_group);
+  if (it != joint_model_group_map.end()) {
+    return it->second;
   }
+  const robot_state::JointModelGroup* tmpj = kinematic_model->getJointModelGroup(_move_group);
+  if (!tmpj) {
+    joint_model_group_map[_move_group] = tmpj;
+    return tmpj;
+  }
+  ROS_WARN("error :: joint_model_group [%s] doesn't exist", _move_group.c_str());
+  return NULL;
 }
 /////////////////////////////////////////////////
 const robot_state::JointModelGroup* aero::interface::AeroMoveitInterface::getJointModelGroup(aero::arm _arm, aero::ikrange _range)

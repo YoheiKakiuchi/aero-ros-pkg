@@ -51,7 +51,7 @@ public:
   {
     ROS_DEBUG("HandControl com: %d, hand %d, pow: %d, thre: %f %f, lr_ang: %f %f",
               req.command, req.hand, req.power,
-              thre_fail, thre_warn, larm_angle, rarm_angle);
+              req.thre_fail, req.thre_warn, req.larm_angle, req.rarm_angle);
 
     aero_startup::GraspControl g_srv;
 
@@ -81,7 +81,7 @@ public:
           g_srv.request.power = (100 << 8) + 30;
         }
         ROS_DEBUG("call pos: %d, script: %d, power %d",
-                  g_srv.position, g_srv.script, g_srv.power);
+                  g_srv.request.position, g_srv.request.script, g_srv.request.power);
         g_client_.call(g_srv);
         {
           robot_interface::joint_angle_map act_map;
@@ -218,7 +218,7 @@ public:
           g_srv.request.power = (100 << 8) + 30;
         }
         ROS_DEBUG("call pos: %d, script: %d, power %d",
-                  g_srv.position, g_srv.script, g_srv.power);
+                  g_srv.request.position, g_srv.request.script, g_srv.request.power);
         g_client_.call(g_srv);
         {
           robot_interface::joint_angle_map act_map;
@@ -291,7 +291,7 @@ public:
     //
     g_srv.request.power = (100 << 8) + 30;
     ROS_DEBUG("call pos: %d, script: %d, power %d",
-              g_srv.position, g_srv.script, g_srv.power);
+              g_srv.request.position, g_srv.request.script, g_srv.request.power);
     g_client_.call(g_srv);
   }
 
@@ -320,7 +320,7 @@ public:
         g_srv.request.script = GraspControlRequest::SCRIPT_CANCEL;
         g_srv.request.power = (100 << 8) + 30;
         ROS_DEBUG("call pos: %d, script: %d, power %d",
-                  g_srv.position, g_srv.script, g_srv.power);
+                  g_srv.request.position, g_srv.request.script, g_srv.request.power);
         g_client_.call(g_srv);
         executing_flg_left_ = false;
       }
@@ -339,7 +339,7 @@ public:
         g_srv.request.script = GraspControlRequest::SCRIPT_CANCEL;
         g_srv.request.power = (100 << 8) + 30;
         ROS_DEBUG("call pos: %d, script: %d, power %d",
-                  g_srv.position, g_srv.script, g_srv.power);
+                  g_srv.request.position, g_srv.request.script, g_srv.request.power);
         g_client_.call(g_srv);
         executing_flg_right_ = 0;
       }

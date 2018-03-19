@@ -53,9 +53,19 @@ public:
               req.command, req.hand, req.power,
               req.thre_fail, req.thre_warn, req.larm_angle, req.rarm_angle);
 
+    if (req.hand != HandControlRequest::HAND_LEFT &&
+        req.hand != HandControlRequest::HAND_RIGHT &&
+        req.hand != HandControlRequest::HAND_BOTH ) {
+      ROS_ERROR("not existing hand (= %d) for aero_startup/HandControl service", req.hand);
+      res.success = false;
+      res.status  = "invalid hand parameter";
+      return true;
+    }
+
     aero_startup::GraspControl g_srv;
 
     int power = req.power;
+    res.success = true; // substitude 'false' if needed
 
     switch (req.command) {
     case HandControlRequest::COMMAND_GRASP:
@@ -107,7 +117,6 @@ public:
           g_srv.response.angles[1] = pos1;
         }
 
-        res.status = true;
         std::string status_msg = "grasp success";
         if (req.hand == HandControlRequest::HAND_LEFT) {
           if (g_srv.response.angles[0] > -req.thre_warn) {
@@ -141,14 +150,12 @@ public:
     case HandControlRequest::COMMAND_UNGRASP:
       {
         OpenHand(req.hand);
-        res.status = true;
         res.status = "ungrasp success";
       }
       break;
     case HandControlRequest::COMMAND_GRASP_ANGLE:
       {
         GraspAngle(req.hand, req.larm_angle, req.rarm_angle);
-        res.status = true;
         res.status = "grasp-angle success";
       }
       break;
@@ -203,7 +210,7 @@ public:
               ROS_DEBUG("fail: GraspAngle");
               GraspAngle(req.hand, 0.0, req.rarm_angle, 1.2);
             }
-            res.success = true;
+            res.success = false;
             res.status = "grasp failed";
             return true;
           }
@@ -241,7 +248,6 @@ public:
           g_srv.response.angles[1] = pos1;
         }
 
-        res.success = true;
         std::string status_msg = "grasp success";
         if (req.hand == HandControlRequest::HAND_LEFT) {
           if (g_srv.response.angles[0] > req.thre_fail) {

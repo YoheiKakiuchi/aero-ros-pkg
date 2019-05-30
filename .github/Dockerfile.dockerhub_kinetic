@@ -1,0 +1,64 @@
+FROM yoheikakiuchi/ros_gl:16.04
+
+SHELL ["bash", "-c"]
+
+ENV WORKSPACE /catkin_ws
+
+# prepare catkin and all euslisp packages
+RUN apt-get -q -qq update && apt-get -q -qq install -y \
+    ros-${ROS_DISTRO}-catkin \
+    python-wstools python-catkin-tools \
+    bc net-tools iputils-ping
+
+# create catkin workspace
+WORKDIR ${WORKSPACE}
+RUN wstool init ${WORKSPACE}/src
+##
+RUN mkdir -p ${WORKSPACE}/src/aero-ros-pkg
+COPY . ${WORKSPACE}/src/aero-ros-pkg/
+
+### add jsk_aero_robot to workspace
+RUN git clone https://github.com/jsk-ros-pkg/jsk_robot.git /tmp/jsk_robot  \
+    && cp -r /tmp/jsk_robot/jsk_aero_robot ${WORKSPACE}/src  \
+    && cp -r /tmp/jsk_robot/jsk_robot_common ${WORKSPACE}/src  \
+    && rm -rf /tmp/jsk_robot
+
+# catkin build
+WORKDIR ${WORKSPACE}
+RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && rosdep install -q -y -r --from-paths src --ignore-src || echo 'Ignore rosdep error' \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/
+
+RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && catkin config --init
+RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && catkin build aero_description
+
+WORKDIR ${WORKSPACE}/src/aero-ros-pkg/aero_description
+RUN source ${WORKSPACE}/devel/setup.bash \
+    && ./setup.sh typeFCESy
+
+WORKDIR ${WORKSPACE}
+## build
+RUN source ${WORKSPACE}/devel/setup.bash \
+    && catkin build aero_std aero_samples aero_gazebo aeroeus \
+    && catkin clean -y -b -l
+
+## build aero.l
+WORKDIR /tmp
+RUN source ${WORKSPACE}/devel/setup.bash \
+    && rosrun euscollada collada2eus $(rospack find aero_description)/robots/aero.urdf $(rospack find aero_description)/robots/aero.yaml aero.l \
+    && mv /tmp/aero.l $(rospack find aeroeus)/aero.l
+
+## download initial gazebo models (? melodic)
+RUN gzserver & sleep 540 && pkill -9 gzserver
+
+##
+RUN git clone https://github.com/YoheiKakiuchi/robotsimulation-docker.git /tmp/rsim  \
+    && cp /tmp/rsim/choreonoid_docker/my_entrypoint.sh /  \
+    && cp /tmp/rsim/choreonoid_docker/my_entryrc /  \
+    && rm -rf /tmp/rsim
+
+ENTRYPOINT ["/my_entrypoint.sh"]
+CMD ["bash"]

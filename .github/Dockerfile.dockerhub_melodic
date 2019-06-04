@@ -12,7 +12,10 @@ RUN apt-get -q -qq update && apt-get -q -qq install -y \
 
 # create catkin workspace
 WORKDIR ${WORKSPACE}
-RUN wstool init ${WORKSPACE}/src
+RUN wstool init src \
+    && wstool set -y -t src jsk_pr2eus https://github.com/jsk-ros-pkg/jsk_pr2eus.git --git \
+    && wstool update -t src
+
 ##
 RUN mkdir -p ${WORKSPACE}/src/aero-ros-pkg
 COPY . ${WORKSPACE}/src/aero-ros-pkg/
